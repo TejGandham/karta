@@ -20,9 +20,8 @@ The binder is karta's spine — the single JSON artifact that drives planning, b
 | `runtime_contract` | object \| null | no | Declares the runtimes the env needs; null or absent when no runtime floor is recorded (see The runtime contract) |
 | `runtime_contract.runtimes` | object[] | no | Required language/toolchain runtimes the planner survey detected |
 | `runtime_contract.runtimes[].name` | string | yes (in entry) | Runtime, e.g. `node`, `python`, `go` |
-| `runtime_contract.runtimes[].required` | string | yes (in entry) | Required version or range, e.g. `24.15`, `3.13`, `>=24.15.0` |
-| `runtime_contract.runtimes[].manager_file` | string \| null | no | Pin file the requirement was read from, e.g. `.nvmrc`, `.tool-versions`, `.python-version` |
-| `runtime_contract.runtimes[].source` | string | no | Where the requirement was read, e.g. `package.json engines`, `pyproject` |
+| `runtime_contract.runtimes[].version` | string | yes (in entry) | Required version or range, e.g. `24.15`, `3.13`, `>=24.15.0` |
+| `runtime_contract.runtimes[].manager` | string | no | Version manager that pins it, e.g. `nvm`, `mise`, `asdf`, `volta`, `pyenv` |
 | `runtime_contract.on_unavailable` | `halt` | no | Policy when the active runtime does not satisfy the declaration; the only value is `halt` |
 | `work_items` | WorkItem[] | yes | Ordered list of work items (at least one) |
 
@@ -32,7 +31,7 @@ The binder is karta's spine — the single JSON artifact that drives planning, b
 
 karta does not install or select runtimes for you. Doing so would reach outside the worktree and pull an unpinned toolchain onto the host — a hermeticity and supply-chain hazard. The contract only **declares and detects**; it never auto-provisions.
 
-Each `runtimes` entry pins one runtime: `name` (`node`, `python`, `go`, …), the `required` version or range (e.g. `node` `24.15`, `python` `3.13`), the `manager_file` the requirement was read from (`.nvmrc`, `.tool-versions`, `.python-version`, a `package.json` `engines` entry, or `pyproject`), and the `source` it was read from. `on_unavailable` has exactly one value, `halt`: when the active runtime does not satisfy the declaration, karta stops and reports rather than guessing or installing.
+Each `runtimes` entry pins one runtime: `name` (`node`, `python`, `go`, …), the `version` it requires (a version or range, e.g. `node` `>=24.15.0`, `python` `3.13.x`), and an optional `manager` — the version manager that pins it (`nvm`, `mise`, `asdf`, `volta`, `pyenv`). The planner reads the repo's pin files (`.nvmrc`, `.tool-versions`, `.python-version`, a `package.json` `engines` entry, `pyproject`) to detect the floor, then records the resulting `version` (and the `manager` when one is in use) — not the pin-file path. `on_unavailable` has exactly one value, `halt`: when the active runtime does not satisfy the declaration, karta stops and reports rather than guessing or installing.
 
 The two roles split cleanly:
 

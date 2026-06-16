@@ -113,7 +113,7 @@ For the binder level, populate:
 - `scope.included` and `scope.excluded`
 - `design_facts.source` (path to the design, or null) and `design_facts.stack` (from `plan:survey`)
 - `env_contract.command`, `env_contract.supports_isolation`, and `env_contract.isolation_params` (from `plan:survey`)
-- `runtime_contract` when the project pins a runtime floor: one `runtimes` entry per runtime (`name`, `required` version/range, the `manager_file` that pins it, and the `source` it was read from), plus `on_unavailable` (always `halt` — karta never auto-provisions or selects a runtime). Read it from version-manager pin files and manifest fields (`engines`, `requires-python`); omit the whole object when no runtime floor exists
+- `runtime_contract` when the project pins a runtime floor: one `runtimes` entry per runtime (`name`, the required `version`/range, and an optional `manager` — the version manager that pins it, e.g. `nvm`/`mise`), plus `on_unavailable` (always `halt` — karta never auto-provisions or selects a runtime). Detect the floor from version-manager pin files and manifest fields (`engines`, `requires-python`), then record the resolved `version`; omit the whole object when no runtime floor exists
 - `token_manifest` only when the stack has a token system
 
 For each work item, set:
