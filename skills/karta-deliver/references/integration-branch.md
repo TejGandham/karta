@@ -38,6 +38,8 @@ Per-item outcomes:
 - `refs/karta/<slug>/item-<id>/failed` → failing branch tip
 - `refs/karta/<slug>/item-<id>/in-progress`
 
+`built` and `done` can resolve to the same commit — that is expected, not redundancy. Both refs exist only in orchestrated-wave mode (the worker writes `built`, the orchestrator writes `done` after merging); the single-item hatch writes only `done`. They record *who advanced the tip*, not two different commits. On a fast-forward wave merge `built` and `done` point at the same SHA; they diverge only on a no-fast-forward or multi-item merge — where `done` is the new merge commit and `built` stays at the pre-merge item tip — and on resume. The two refs answer different questions: `built` = "the worker cleared its floor + acceptance here"; `done` = "the integration tip's single writer merged it here". Both are kept even when they coincide.
+
 Resume reads these refs/tags; no separate state file. Revert-the-wave = `git reset --hard karta/<slug>/wave-<N>-base` on the integration branch.
 
 ## Env-injection contract
