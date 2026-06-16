@@ -23,6 +23,10 @@ A few things can only be changed one at a time, in a set order — a database mi
 3. Two items in the same batch would edit the same files.
 Even when neither item needs the other, if both edit the same file, building them side by side means their changes collide when karta stacks the results together. So karta runs them one at a time to avoid the merge mess. Example: two items that both edit the global stylesheet.
 
+Editing a file an earlier item created is fine, and common. A later item may extend a file that an earlier item it depends on already produced — registering its route in an app shell's `app.ts`, mounting its endpoint in a `main.py` — as long as that file sits inside the binder's `scope.included`. The dependency edge (#1) already keeps the earlier item finished and merged before the later one starts, so the later item builds on top of a settled file, not against one in flight. There is no per-item scope; `scope.included` is the binder's one shared boundary, and any item may touch anything inside it that its work calls for.
+
+The collision case is narrower: it's only two items in the *same wave* both editing the same file. That is exactly what this gate catches — it serializes the pair so their edits land in order instead of clobbering each other. Across waves there is no collision to catch, because the waves already run in sequence.
+
 4. You said so.
 You can mark items in the binder as "don't run these together." This is your override for interference karta can't see — you know two items will step on each other for a reason that isn't visible in the file list.
 

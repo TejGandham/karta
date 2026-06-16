@@ -33,11 +33,12 @@ Resolve in order: **explicit user input → detect from the repo → ask the use
 | **Toolchain commands** | lint / test / build / typecheck invocations | Detect from package scripts, task runners (npm/pnpm/yarn, Makefile, Nx, Turborepo, Cargo, Poetry, etc.) |
 | **CI-facing checks** | The subset of commands that gate CI (used as oracle `command` values) | Detect from CI workflow files; if absent, use the toolchain commands |
 | **Env command** | The command that starts the dev/test environment (feeds `env_contract.command`) | Detect from package scripts or a `docker-compose.yml`; ask if not found |
+| **Required runtime** | The language/toolchain runtime versions the commands need (feeds `runtime_contract`) | Detect from version-manager pin files (`.nvmrc`, `.tool-versions`, `.python-version`, `mise`/`asdf` config) and manifest fields (`package.json` `engines`/Volta, `pyproject.toml` `requires-python`); ask for the floor only when nothing pins it but a tool is known to gate on a minimum |
 | **Repo direction docs** | Architecture docs, ADRs, or decision records | Detect: `ARCHITECTURE.md`, `docs/architecture/`, `docs/decisions/`, `adr/`; cite only filled docs (skip placeholder templates); ask when context is thin |
 | **Project rules** | Conventions the repo documents (lint configs, contributor guides, rules files) | Detect; verify the doc has real content before citing |
 | **Repo policy** | CI/branch/deployment policy (only when in planning scope) | Read root/area `AGENTS.md`, workflows, and CI docs; load [references/ci-policy.md](references/ci-policy.md) and [references/policy-yagni.md](references/policy-yagni.md) |
 
-Resolved values feed the binder's `design_facts.stack`, `env_contract`, and each oracle's `command`. Record them — every later phase references them.
+Resolved values feed the binder's `design_facts.stack`, `env_contract`, `runtime_contract`, and each oracle's `command`. Record them — every later phase references them.
 
 ### UI / design-token annex (conditional)
 
@@ -71,7 +72,7 @@ Use an **Explore subagent** OR an inline read-only pass to survey the repo.
 
 **Subagent brief:**
 
-Survey the repo at `<root>`. Identify the primary tech domain (frontend, backend, CLI, data pipeline, library/SDK, IaC, mobile, ML, docs, or mixed). Identify the toolchain: how the project lints, tests, builds, and type-checks (look at package scripts, task runners — npm/pnpm/yarn, Makefile, Nx, Turborepo, Cargo, Poetry, Gradle, etc. — and any CI workflow files). Determine the env command: what starts the dev or test environment. Read any architecture, ADR, or decision docs you find (`ARCHITECTURE.md`, `docs/architecture/`, `docs/decisions/`, `adr/`, `AGENTS.md`) — cite only docs with real content; skip placeholders. Read project rule and contributor convention files when present.
+Survey the repo at `<root>`. Identify the primary tech domain (frontend, backend, CLI, data pipeline, library/SDK, IaC, mobile, ML, docs, or mixed). Identify the toolchain: how the project lints, tests, builds, and type-checks (look at package scripts, task runners — npm/pnpm/yarn, Makefile, Nx, Turborepo, Cargo, Poetry, Gradle, etc. — and any CI workflow files). Determine the env command: what starts the dev or test environment. Determine the required runtime: read version-manager pin files (`.nvmrc`, `.tool-versions`, `.python-version`, `mise`/`asdf` config) and manifest fields (`package.json` `engines`/Volta, `pyproject.toml` `requires-python`, a `go` directive in `go.mod`, `rust-version` in `Cargo.toml`) for the language/toolchain versions the commands need. Read any architecture, ADR, or decision docs you find (`ARCHITECTURE.md`, `docs/architecture/`, `docs/decisions/`, `adr/`, `AGENTS.md`) — cite only docs with real content; skip placeholders. Read project rule and contributor convention files when present.
 
 Report:
 1. Resolved stack (one phrase, e.g. "Python/FastAPI backend + Postgres").
@@ -80,6 +81,7 @@ Report:
 4. Env command.
 5. Conventions and rules the repo documents.
 6. Architecture or decision-record notes relevant to the stated intent (if any docs exist).
+7. Required runtime: per runtime, the version or range and the pin file or manifest field it came from (`.nvmrc`, `.tool-versions`, `.python-version`, `engines`, `requires-python`, …). This feeds the binder's `runtime_contract`. Say so plainly when nothing pins a runtime — an absent floor is a clean result, not a gap to guess at.
 
 When context is thin on a point, say so — the main thread will interview the user for the missing piece.
 
@@ -111,6 +113,7 @@ For the binder level, populate:
 - `scope.included` and `scope.excluded`
 - `design_facts.source` (path to the design, or null) and `design_facts.stack` (from `plan:survey`)
 - `env_contract.command`, `env_contract.supports_isolation`, and `env_contract.isolation_params` (from `plan:survey`)
+- `runtime_contract` when the project pins a runtime floor: one `runtimes` entry per runtime (`name`, `required` version/range, the `manager_file` that pins it, and the `source` it was read from), plus `on_unavailable` (`provision` or `halt`). Read it from version-manager pin files and manifest fields (`engines`, `requires-python`); omit the whole object when no runtime floor exists
 - `token_manifest` only when the stack has a token system
 
 For each work item, set:
@@ -131,6 +134,13 @@ For each work item, set:
 - Populate `component_map` from the **component-to-library mapping** (Library match / Library + wrapper / Custom / Composite), `icon_map` from the **icon mapping** (primary → fallback → custom SVG, with the Source column and any missing-icon flags), and `token_changes` from the **design-token mapping** (no-consumable-tier-match tokens recorded as semantic-additive entries with per-context values and Auth) — ui-analysis `ui:components`, `ui:icons`, `ui:tokens`. Put the shared design→project token map in the binder-level `token_manifest`.
 
 Non-UI items keep the stack-agnostic synthesis above and carry none of these fields.
+
+**Foundation / greenfield items (any stack).** A foundation item creates a project from nothing — the first item in a binder that has no integration branch yet and whose contract is to stand up the project, not edit against existing conventions. Trigger greenfield mode off that existing first-item/foundation signal, not a separate judgment call: the project does not exist yet, so there is nothing to detect and no convention to match. When you plan such an item:
+
+- State in the item's `scope.included` and `contract` that it runs the framework's own official generator (e.g. `ng new`, `create-next-app`, `cargo new`, `npm create vite@latest`, `django-admin startproject`). These generators are deterministic and blessed — the framework's own way to lay down a working baseline. Bound the scaffold to the item's contract: set `scope.excluded` to keep generated sample features, demo pages, and unrequested add-ons out, since the generator's footprint is wider than the item. Build trims it and notes generated-but-unused files in its report (it does not edit the read-only binder).
+- Keep the oracle as the real CI-facing check. When the oracle names a check a bare scaffold won't ship (a fresh `ng new` has no `ng lint` / `npm run lint` target), note in the contract that the item must satisfy it through the framework's own official add/plugin command — e.g. `ng add @angular-eslint`, which installs the linter and wires the `lint` target. Provisioning the named tooling is part of the foundation item's work. Do not opt the check out, downgrade it to what the empty scaffold passes, or hand-invent config. A named check that exists but fails is a real failure, never the absent-check carve-out. If no official mechanism exists to satisfy a named check, the item must halt with a call to action rather than improvise.
+- Note that the project's toolchain and oracle commands are re-resolved after the generator runs — before the scaffold there is nothing to detect. The pre-scaffold survey is best-effort; the real commands land once the project exists.
+- Expect the scaffold's footprint to trip the smart-surfaced-review boundary signals at the safety gate (a foundation item touches many new files at once). Pre-justify it in the item's surfacing note so it reads as expected, not as a red flag.
 
 **Oracle traceability rule.** Each oracle assertion must be traceable to the item's `contract`. If an assertion references a field, shape, or behavior the `contract` does not declare, flag the gap now — emit the work item with a note that the contract needs expanding rather than writing an assertion that cannot be verified.
 

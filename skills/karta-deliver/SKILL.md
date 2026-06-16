@@ -63,11 +63,17 @@ Before dispatching, apply the gates from [references/parallelism-gates.md](refer
 
 An item with `serialize: true` runs alone — no parallel build mates for that slot.
 
-**Step 3 — Barrier, then serial merge.** Wait for all wave builds to complete or halt (barrier). Then process passing items one at a time through the serial merge queue from [references/integration-branch.md](references/integration-branch.md): each item re-validates its oracle against the **current** integration tip (which may have advanced as wave-mates merged), then merges. On conflict or re-validation failure, do a bounded rebuild against the new tip or halt.
+**Step 3 — Barrier, then serial merge.** Wait for all wave builds to complete or halt (barrier). In a wave each `karta-build` worker builds its item, runs its floor, acceptance, and secret scan, **commits its item branch (`karta/<slug>/item-<id>`), and stops** — it does **not** merge into integration and does **not** write `done`. A clean worker marks its item by writing `refs/karta/<slug>/item-<id>/built` → the item-branch tip; a halted worker writes no `built` marker and reports the halt.
+
+**The orchestrator is the single writer of the integration tip.** It merges only items that carry a `built` marker, one at a time through the serial merge queue in [references/integration-branch.md](references/integration-branch.md), in FIFO order by completion. Because the merges are serial there is no concurrency at the tip. For each item:
+
+1. **Resume-idempotency guard.** If `refs/karta/<slug>/item-<id>/done` already exists, the item is already merged — skip it. (This makes a resumed run safe to re-enter; it is not a race fix, since the serial queue already rules out concurrent writers.)
+2. **Re-validate the oracle against the current integration tip** (which may have advanced as wave-mates merged). The orchestrator re-checks here — it does **not** trust the worker's verdict; the `built` marker only says the worker finished a clean run on its own branch, not that the item still passes on the moved tip.
+3. Merge (ff or no-ff). On a merge conflict or a re-validation failure, do a bounded rebuild against the new tip or halt.
 
 Before the merge pass, tag `karta/<slug>/wave-<N>-base` on the pre-merge integration tip — this is the revert anchor for partial-wave failure (see `deliver:lifecycle`).
 
-After each merge: write `refs/karta/<slug>/item-<id>/done` → the merge commit.
+After each merge: write `refs/karta/<slug>/item-<id>/done` → the merge commit. The `done` ref is written **here, by the orchestrator** — never by the worker in a wave.
 
 **Step 4 — Post-wave integration check.** Run the project's build/type-check on the new integration tip. On failure, revert the integration branch to `karta/<slug>/wave-<N>-base` and halt with a call to action — this catches semantic collisions that text-clean merges miss (e.g. item A renames a helper, item B used the old name). After the post-wave check passes, tag `karta/<slug>/wave-<N>` on the completed tip.
 
@@ -135,5 +141,6 @@ After the final wave (or halt), report:
 - **The human enters delivery only on escalation.** The safety gate caps at 3 attempts and escalates; the acceptance gate caps at 2 and halts with a call to action. Outside those caps, karta self-corrects. The user is not consulted mid-wave except on partial-wave failure (their choice to revert or continue) or a `deliver:preflight` resume/clear prompt.
 - **A single-item binder skips deliver.** Hand directly to `karta-build`. There is no wave to schedule, no integration branch to assemble across items.
 - **No PR — ever.** The terminal state is a tagged, assembled integration branch. No `gh`/`glab`/`tea`, no review transition.
+- **The orchestrator owns the merge; wave workers stop at a committed item branch.** In a wave, `karta-build` builds its item, runs its floor + acceptance + secret scan, commits the item branch, and writes `refs/karta/<slug>/item-<id>/built` → its tip — then stops. It never merges into `karta/<slug>/integration` and never writes `done`. karta-deliver is the single writer of the integration tip: it merges only items carrying a `built` marker, in serial FIFO, re-validating each item's oracle against the moving tip (it does **not** trust the worker's verdict — the marker says "built", not "still passes the moved tip"), tags `wave-<N>-base`, runs the post-wave check, and writes each `done` ref. Resume is idempotent: an item whose `done` ref already exists is skipped. (The single-item hatch is the exception — handed straight to `karta-build`, which then merges itself; see the two modes in [references/integration-branch.md](references/integration-branch.md).)
 - **Post-wave check reverts on failure.** The pre-merge tag (`wave-<N>-base`) is the revert anchor. A semantic collision the floor missed (e.g. two items independently modifying the same helper) is caught here, not silently merged.
 - **Preserve failing worktrees.** Clean up passing and abandoned worktrees; leave the failing item's worktree in place and print the path.

@@ -40,7 +40,34 @@
       "properties": {
         "command": { "type": "string", "description": "the project's own test/dev env command" },
         "supports_isolation": { "type": "boolean", "description": "whether the command accepts injectable isolation params" },
-        "isolation_params": { "type": "array", "items": { "type": "string" }, "description": "e.g. PORT, COMPOSE_PROJECT_NAME" }
+        "isolation_params": { "type": "array", "items": { "type": "string" }, "description": "e.g. PORT, COMPOSE_PROJECT_NAME" },
+        "cwd": { "type": "string", "description": "worktree-relative directory the command runs in; default is the worktree root" }
+      }
+    },
+    "runtime_contract": {
+      "type": "object",
+      "required": ["runtimes", "on_unavailable"],
+      "additionalProperties": false,
+      "description": "required language/toolchain runtimes the project's commands need; present only when a runtime floor exists",
+      "properties": {
+        "runtimes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "version"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "description": "runtime/toolchain, e.g. node, python, go, ruby, rust" },
+              "version": { "type": "string", "description": "required version or range, e.g. '>=24.15.0', '3.12.x'" },
+              "manager": { "type": "string", "description": "version manager that pins it, e.g. nvm, mise, asdf, volta, pyenv" }
+            }
+          }
+        },
+        "on_unavailable": {
+          "enum": ["halt"],
+          "description": "policy when a required runtime is absent: halt and report. karta does not provision runtimes on its own."
+        }
       }
     },
     "work_items": {
@@ -89,7 +116,8 @@
           "properties": {
             "type": { "enum": ["unit", "integration", "e2e", "smoke", "visual"] },
             "assertions": { "type": "array", "items": { "type": "string" } },
-            "command": { "type": "string", "description": "the CI-facing check karta runs; floor is compile/type-check/lint" }
+            "command": { "type": "string", "description": "the CI-facing check karta runs; floor is compile/type-check/lint" },
+            "cwd": { "type": "string", "description": "worktree-relative directory the command runs in; default is the worktree root" }
           }
         },
         {

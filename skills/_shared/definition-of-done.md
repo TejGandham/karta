@@ -6,6 +6,12 @@
 
 The change must at least compile, type-check, and lint clean. Below that threshold karta does **not** auto-merge — it surfaces the failure and halts.
 
+Floor and oracle commands run at the work item's resolved execution context — the working directory the binder names and the project's own toolchain, never a hand-built `PATH` or shim.
+
+Shipped output must also carry no framework-default placeholder branding — a stock `<title>` like `Frontend` or `Create React App`, generator boilerplate, lorem-ipsum copy, or a `TODO`-named export — left in place of the real values the item's plan specifies. Leftover stock scaffolding in delivered output is a floor failure, not a cosmetic note: an item is not done while it still ships another tool's defaults.
+
+When an item's check oracle runs a command that is a superset of the floor — say the floor is compile/type-check/lint and the oracle is `npm run lint && npm test` — the floor and acceptance are the same check at two altitudes, not two separate bars. The floor runs first as the implementer's own pre-gate. Acceptance re-runs that command in a fresh context and governs. Merge re-validates the merged result, and CI is the bar underneath all of it. The two-phase split stays a real split only for assertion-bearing oracles — assertions the command does not itself check, a `visual` oracle, or a `contract` artifact.
+
 ## Opt-out
 
 Opting out of a check is explicit and **recorded**: the binder's `oracle.opt_out` field plus a `reason`. There is no silent opt-out. karta reports what it leaves unchecked whenever an opt-out is in effect.

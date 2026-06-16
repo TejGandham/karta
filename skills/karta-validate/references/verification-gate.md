@@ -29,6 +29,19 @@ There is no human review gate during delivery. The human is reached only on retr
 
 If the change does not even compile, type-check, or lint, the gate does not pass and karta does not auto-merge. It surfaces the item for a person instead. This is the floor under every non-opted-out item, and the definition-of-done reference is its canonical statement. A change that cannot clear compile/type-check/lint has not earned an acceptance review — it has earned a surfacing.
 
+### When the oracle command overlaps the floor
+
+For a check oracle, the `oracle.command` is often a superset of the floor — the floor clears compile/type-check/lint, and the command is something wider like `npm run lint && npm test`. That looks like the floor and the gate run the same command twice. They do not. The command runs and the gate inspects, and they sit at different altitudes:
+
+- **Floor — the command runs in the worktree.** karta-build runs the project's floor commands (and the oracle command, when the project wires it in) inside the build worktree before any handoff. This is execution: the code compiles, type-checks, lints, and the command exits clean, or the item never reaches the gate.
+- **Acceptance — the gate reads the diff.** The acceptance gate is read-only. `karta-acceptance-reviewer` dispositions each oracle assertion against the actual diff and, for a declared `contract`, checks the diff against the external artifact. It does not execute the oracle command. The command's runtime truth belongs to the run that already happened in the worktree, not to the gate.
+
+So there is no double run at the gate. The floor proves the command passed in-worktree; acceptance judges whether the diff honors the oracle's assertions. They are different operations — execute, then inspect — not one check run twice.
+
+The command does get re-executed, but later and at higher altitudes: merge re-validates the oracle against the merged tip, so the check passes on what actually lands and not just on the item branch; and the project's CI is the final altitude, the authoritative run on the integrated result. A failure that the in-worktree floor cleared can still surface at merge or in CI when the tip has moved — that is the point of re-running there.
+
+This overlap is only about the floor and the gate looking redundant. The genuine two-phase model stays intact for an assertion-bearing oracle — assertions the command does not itself check, a `visual` oracle, or a `contract` artifact: the floor clears compile/type-check/lint, then acceptance dispositions each assertion (or `karta-validate` compares rendered output, or the gate checks the contract artifact) on its own.
+
 ## Advisory hooks
 
 Any pre-tool hook a project wires in stays advisory: it exits 0 and never blocks. The gate blocks, not the hook. The hook can warn at edit time, but the authoritative judgment is the gate running on the actual diff in a fresh session — which self-corrects within its caps, then escalates or halts. A hook that hard-failed would be a second, hidden gate; karta keeps exactly one.

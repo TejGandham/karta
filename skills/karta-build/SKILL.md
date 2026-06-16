@@ -1,9 +1,9 @@
 ---
 name: karta-build
-description: Use when implementing one work item from a karta binder in an isolated git worktree — stack-agnostic (frontend, backend, CLI, data, IaC, …) — running the project's lint/test/build plus the item's acceptance check, tagging commits, and merging into the per-binder integration branch (no PR). Trigger phrases: "build this binder item", "implement work item `<id>`", "karta-build `<binder> <id>`".
+description: Use when implementing one work item from a karta binder in an isolated git worktree — stack-agnostic (frontend, backend, CLI, data, IaC, …) — running the project's lint/test/build plus the item's acceptance check, tagging commits, and completing the item on its branch (in a wave the orchestrator merges; invoked directly the worker merges into the per-binder integration branch). No PR. Trigger phrases: "build this binder item", "implement work item `<id>`", "karta-build `<binder> <id>`".
 ---
 
-karta-build takes **one work item from a validated binder** and carries it from pickup to a tagged set of commits merged into the binder's **integration branch** — all inside an isolated git worktree. It is stack-agnostic: the same flow implements a frontend view, a backend endpoint, a CLI command, a data migration, or an IaC change. It does **not** open a PR. The user reviews and merges the integration branch.
+karta-build takes **one work item from a validated binder** and carries it from pickup to a tagged set of commits that complete the item on its own branch — all inside an isolated git worktree. How the item finishes depends on how the skill was invoked: invoked directly on one item, the worker merges its commits into the binder's **integration branch**; dispatched inside a wave, the worker stops at its committed branch and the orchestrator merges. It is stack-agnostic: the same flow implements a frontend view, a backend endpoint, a CLI command, a data migration, or an IaC change. It does **not** open a PR. The user reviews and merges the integration branch.
 
 The binder (`.karta/binders/<slug>.json`) is the cross-skill contract. Each work item carries an `oracle` (its acceptance check) and an optional `contract` (the interface it exposes or consumes). karta-build reads the binder — it never writes to it during a run (see [references/binder-reference.md](references/binder-reference.md)). The planning counterpart is `karta-plan`; the read-only acceptance and visual gates are `karta-verify` / `karta-validate`.
 
@@ -20,8 +20,10 @@ Resolve each setting in this order: **explicit user input → detect from the re
 | Setting | What it is | How to resolve |
 |-|-|-|
 | **App dir / target** | Where the item's code lives, and its task-target name | Detect from the binder's `scope.included` and the repo layout; in a monorepo or polyglot repo, root all paths/commands at the area the item targets; else ask |
+| **Command cwd** | The working directory each floor/oracle/env command runs in | Read the oracle's `cwd` and `env_contract.cwd` — both **relative to the item's worktree root** (default = the worktree root itself). When the binder omits it, resolve it to the toolchain's own root for the area the item targets. In a multi-root repo each root keeps its own cwd. Project-local tools resolve from this dir — see [references/integration-branch.md](references/integration-branch.md) for env injection |
 | **Toolchain commands** | install / lint / test / build / typecheck invocations | Detect from package scripts + task runner (npm/pnpm/yarn, Make, Nx, Turbo, Cargo, Poetry, …); record `<install command>`, `<lint command>`, `<test command>`, `<build command>`, `<typecheck command>`. When both package scripts and a task runner exist, prefer the project's documented entrypoint — a bare script pick can skip orchestrated lint/coverage the runner bundles |
 | **Env command** | The dev/test env command and its isolation params | Read the binder's `env_contract` (`command`, `supports_isolation`, `isolation_params`); see [references/integration-branch.md](references/integration-branch.md) for env injection |
+| **Required runtime** | The runtime versions the floor/env commands need | Read the binder's optional `runtime_contract` (`runtimes[]` with `name`/`required`, `on_unavailable: halt`). When absent, fall back to detecting the repo's pin files (`.nvmrc`, `.tool-versions`, `.python-version`) and manifest fields (`engines`, `requires-python`). A preflight in `build:sanity`/`build:floor` **checks** the active runtime against the declaration and **halts** on mismatch — karta never installs or selects a runtime itself |
 | **Default branch** | The repo's mainline (only the fallback base, not the build base) | Detect via `git remote show origin` (the `HEAD branch:` line), else whichever of `main`/`master` exists. Don't rely on `git symbolic-ref refs/remotes/origin/HEAD` — it's unset on many fresh clones |
 | **Integration branch** | The binder's integration branch and its worktree | `karta/<slug>/integration`, where `<slug>` is the binder's `slug` field. This — not the default branch — is the base for the item's worktree (see `build:implement`) |
 | **Worktree root** | Parent dir for per-item worktrees | Ask/default to a sibling dir (e.g. `../<repo>-worktrees/`) |
@@ -107,6 +109,7 @@ This checks schema validity, dependency cycles, and dangling `depends_on` refere
 - `ITEM_CONTRACT` — the item's `contract`, if present (the interface it exposes/consumes)
 - `ITEM_DEPS` — the resolved `depends_on` ids (all merged, per Gate 3)
 - `SERIALIZE` / `SHARED_RESOURCES` — `serialize` and `shared_resources`, if present (the orchestrator's concern, but note them)
+- `RUN_MODE` — **single-item hatch** vs **orchestrated wave**. This is an **explicit signal**, not something you infer from repo state: `karta-deliver` tells the worker it is in wave mode when it dispatches it; a worker invoked directly with no such signal defaults to single-item. This decides who owns the terminal merge in `build:merge` — see [references/integration-branch.md](references/integration-branch.md). Do not read the integration branch's existence or the presence of wave-mates to guess the mode.
 - UI annex fields, **only if present**: `COMPONENT_MAP` (`component_map`), `ICON_MAP` (`icon_map`), `TOKEN_CHANGES` (`token_changes`), `DESIGN_REFERENCE` (`design_reference`), and the binder's `design_facts.source`
 
 ### Phase 2 — Sanity-check the item against the codebase  `build:sanity`
@@ -115,9 +118,11 @@ Read the work item and the binder's `scope`, `design_facts`, and `env_contract`.
 
 - **Do referenced/reused files still exist?** Read the paths the item's plan cites as existing. (Do not existence-check files the item is meant to create.)
 - **Do new files conflict with existing ones?** Flag any path the item creates that already exists with different content — a conflict to resolve, not the greenfield case.
+- **Is a shared file co-owned by an earlier item?** An item may legitimately modify a file an earlier **depended-on** item created — e.g. a view item adding its route to the app shell's `app.ts`, or an endpoint item registering itself in `main.py` — as long as that file is inside the binder's `scope.included`. (There is no per-item scope field; the binder's `scope.included` is the boundary.) This is allowed when the edit is **additive and scoped to the item's own surface** (registering a route, mounting a component, adding a handler). Make the smallest change that wires in this item; do not refactor or restyle the co-owned file beyond what this item needs. If the edit would rewrite shared structure rather than extend it, that is blast-radius the item did not authorize — flag it and ask. Two wave-mates that both edit a co-owned file is a serialization concern the orchestrator's parallelism gates handle, not a build-time decision; honor a declared `serialize` / `shared_resources` rather than racing the edit.
 - **Do citations still resolve?** Search for any "reuse `<path>`" target with the host's fastest code-search tool.
 - **Has the surrounding code drifted?** Confirm the function signatures and data shapes the item depends on still match — including anything a merged dependency introduced on the integration tip.
 - **Contract sanity.** If the item declares an `ITEM_CONTRACT`, confirm the external artifact it names (a type, a schema, a contract test) still exists and is the shape the item expects.
+- **Runtime sanity.** Read the binder's optional `runtime_contract`. For each declared runtime, compare the active version on the host (`node --version`, `python --version`, the host equivalent) against `required`. When the binder carries no `runtime_contract`, do a best-effort detect from the repo's pin files (`.nvmrc`, `.tool-versions`, `.python-version`) and manifest fields (`engines`, `requires-python`). Note any mismatch — the runtime preflight in `build:floor` halts on it. Surfacing it here means a tool's hard refusal later is not a surprise. karta does **not** install or select a runtime; it only checks and reports.
 
 **UI annex (only when UI fields are present):** verify `design_facts.source` exists; spot-check 2–3 `COMPONENT_MAP` entries against the resolved library's install path; check the item's route doesn't already exist with conflicting content. If the library can't be enumerated (minified/CDN), spot-check via its exported type surface and treat as best-effort.
 
@@ -164,12 +169,20 @@ Immediately after `cd "$worktree"`, run the mutation guard from [references/work
 
 **CI/policy items.** If the item touches CI, repository automation, branch policy, rulesets, required checks, deployment, generated contracts, or environment policy, load [references/ci-policy.md](references/ci-policy.md) and [references/policy-yagni.md](references/policy-yagni.md) before editing. Summarize the current repo policy first, keep workflows thin, distinguish "runs" from "required", and do not add fork hardening, merge queues, CODEOWNERS, or similar controls unless repo policy or explicit direction requires them.
 
+**Greenfield / scaffold mode (foundation or first item only).** Trigger off the existing foundation signal, not a fresh judgment call: the integration branch does not yet exist (this is the first item in the binder, `build:implement` is creating `karta/<slug>/integration` from the default branch) **and** the item's contract is to stand up the project/framework rather than edit against existing conventions. There is no prior convention to follow and no `component_map` to map against — this item establishes the conventions the rest of the binder builds on. Rules:
+
+- **The framework's own official generator is allowed here** (e.g. `ng new`, `create-next-app`, `cargo new`, `npm create vite@latest`, `django-admin startproject`). It is deterministic and blessed — the project's own way to lay down a working baseline; hand-writing what the generator emits is not more correct. Run it from inside the worktree, against the resolved app dir/target.
+- **Bound the scaffold to the item's contract.** A generator may write many files (a sample app, demo routes, starter assets); keep only what the item's `scope.included` and `ITEM_CONTRACT` call for. Do not pull in extra framework add-ons, sample features, or demo pages the item did not ask for — that is scope creep the same as in an edit-mode item. **Note generated-but-unused files in the final report** (`build:report`); do not edit the read-only binder to record them.
+- **Re-resolve the toolchain and oracle commands after the generator runs.** Before the generator there was nothing to detect; the resolved `<lint command>` / `<test command>` / `<build command>` and the oracle's `command` must be re-derived from what the generator actually produced (package scripts, `angular.json` targets, `Cargo.toml`, etc.) before the floor runs.
+- **Satisfy an oracle-named check the fresh scaffold lacks ONLY via the framework's own official add/plugin command — never by weakening or skipping the oracle.** A generator often omits a target the oracle names (e.g. `ng new` ships no `lint` target). The fix is the framework's own blessed mechanism to wire it (e.g. `ng add @angular-eslint/schematics`, which installs the linter and adds the `lint` target) so the named check exists and runs against your code. If no official mechanism exists, **halt with a call to action** — do not hand-invent config. And the carve-out is narrow: it covers only a check that is **genuinely absent** from a fresh scaffold. A check that **exists but fails** is a real failure under the acceptance cap, never the absent-check case — never rename the check, narrow its globs, mark it non-blocking, defer it, or edit the oracle to a check the bare scaffold happens to pass.
+- **Expect the scaffold to trip the safety gate.** A generator's footprint (many new files, config it touches) trips smart-surfaced-review #4/#5 (large/structural change; new config or policy surface) at the acceptance safety scan — pre-justify it in the high-impact mutation preview and the report so the boundary scan reads it as the item's authorized scaffold, not an unexplained blast radius.
+
 **General implementation rules (every stack):**
 
 - Follow the project's structure and convention docs — cite a resolved rules doc if one exists, else apply sensible inline conventions.
 - Implement against the resolved `ITEM_CONTRACT` when present — produce the interface the contract names; do not diverge from it silently.
 - **Declare deferrals inline.** When you skip a test, stub a dependency, or defer an edge case, place a `KARTA-DEFER(<id>)` marker at the exact site per [references/declared-debt.md](references/declared-debt.md). A deferral is recorded, never silent — it surfaces in the final report.
-- **Never weaken the oracle.** Do not edit or soften the item's `oracle`/acceptance assertions (or its `contract`) to make a check pass. On a genuine oracle-or-contract conflict — the item cannot be implemented as specified without violating one — **halt with a call to action** rather than silently diverging. Code, specs, and tests win; the implementer does not get to move the goalposts.
+- **Never weaken the oracle.** Do not edit or soften the item's `oracle`/acceptance assertions (or its `contract`) to make a check pass. On a genuine oracle-or-contract conflict — the item cannot be implemented as specified without violating one — **halt with a call to action** rather than silently diverging. Code, specs, and tests win; the implementer does not get to move the goalposts. When a *fresh scaffold* lacks a check the oracle names, that is the absent-check case, not a conflict — provision the named tooling through the framework's own add/plugin command (see Greenfield / scaffold mode above). A check that **exists but fails** is always a real failure, never the absent-check carve-out.
 
 **Conditional UI/data implementation annex (only when the item carries UI fields):**
 
@@ -183,6 +196,14 @@ All subsequent phases run from inside the worktree. Stay `cd`'d there until the 
 
 ### Phase 5 — Deterministic gate (the floor)  `build:floor`
 
+**Runtime preflight — check, then halt (never auto-provision).** A floor command can hard-refuse on a runtime mismatch: a CLI that demands a minimum Node exits non-zero before any of your code runs. So before any floor command, check the active runtime against the declaration:
+
+1. For each runtime in the binder's `runtime_contract` (or, when absent, each version pinned by the repo's `.nvmrc` / `.tool-versions` / `.python-version` / `engines` / `requires-python` detected in `build:sanity`), compare the active host version against `required`.
+2. **On a mismatch, halt with a call to action** — report the required version, the active version, and the pin file/source. karta does **not** install or select a runtime; provisioning a runtime is a hermeticity and supply-chain concern that stays the operator's. `on_unavailable` carries the single value `halt`; this is the same hard-gate idiom karta uses for the playwright/uv preflights — surface the gap, do not auto-fix.
+3. When the repo declares its own version manager (a `mise`/`asdf`/Volta config), the floor and oracle commands **may** route through it (e.g. `mise exec -- <command>`) so they run under the declared version. This is using the repo's own pinned runtime, not karta selecting one.
+
+Only once the active runtime satisfies the declaration do the floor commands run.
+
 Run from the worktree before the acceptance loop. This is the floor under every non-opted-out item — compile / type-check / lint clean (see [references/definition-of-done.md](references/definition-of-done.md)):
 
 ```bash
@@ -193,6 +214,10 @@ Run from the worktree before the acceptance loop. This is the floor under every 
 ```
 
 Run whichever of these the project defines. If any fails, fix it in this thread — you own the code — and do not proceed to the acceptance loop until the floor is clean. A change that cannot clear the floor has not earned an acceptance review; if fixes take more than ~2 attempts, surface to the user.
+
+**Run every floor and oracle command from its resolved cwd, through the project's own toolchain.** Use the **Command cwd** resolved in Project configuration — the worktree root by default, or the oracle/`env_contract` `cwd` (worktree-relative) in a multi-root repo. Project-local binaries resolve via that dir the way the runner already provides them — `npm`/`pnpm`/`yarn run` put that package's `node_modules/.bin` on `PATH`; `uv run` executes inside the project's `.venv`; `just` / Nx / Turbo carry their own project environment; `make -C <dir>` runs the recipe in that dir. The cwd is the primary mechanism — **do not invent a root `package.json`, a `bin/` shim, or a hand-assembled `PATH`** to make a bare command run. That is machinery the runner already supplies.
+
+**When the oracle command duplicates a floor check.** If the item's `ITEM_ORACLE.command` runs a check that the floor commands above already cover (e.g. the oracle command is `npm run lint`, which the floor's `<lint command>` already runs), it simply **runs here at the floor** — there is no second phase that re-executes it. The acceptance gate (`build:acceptance`) is read-only: it inspects and dispositions the oracle's assertions against the diff, it does not re-run the command. So a command-shaped oracle check lands at the floor; assertion-bearing, `visual`, and `contract` oracles are dispositioned at acceptance. Author note: do not duplicate a floor check as a separate acceptance step.
 
 **UI annex — token-conformance check (DTCG only, single pass folded into this phase, never a loop).** When the DTCG token settings were resolved, run the deterministic three-check scan (generated-artifact reproducibility; no primitive-tier consumption in new code; no hardcoded duplicates of existing tokens), scoped to files changed vs the integration tip. Stage new files first (`git add -A`). Full definitions in **[references/dtcg-tokens.md](references/dtcg-tokens.md)**.
 
@@ -291,6 +316,8 @@ Once the floor is clean, run the item's acceptance check through the verificatio
 - **`oracle.type == visual`** → `karta-validate`. It compares rendered output against the design (UI annex; resolve `<dev-server-port>`, the design source, and the item's `design_reference`). The per-round capture/compare mechanism `karta-validate` uses is in **[references/design-validation-loop.md](references/design-validation-loop.md)**. Skip the visual gate when `design_reference` is `none`. **Before invoking `karta-validate`, the app must be up** — bring it up per the dev-server lifecycle below.
 - **any other type** (`unit` / `integration` / `e2e` / `smoke`) → `karta-verify`. It dispositions each of the oracle's `assertions` against the actual diff, and — when the item declares an `ITEM_CONTRACT` — checks the diff against the external contract artifact (a type-checker, schema, or contract test), not against the binder's claim.
 
+**One command, distinct altitudes.** When the oracle `command` overlaps a floor check, the command actually **runs at the floor** (`build:floor`); this read-only gate does **not** re-execute it — it inspects and dispositions the assertions against the diff. The serial merge re-validates the oracle against the merged tip (`build:merge`, single-item mode), and CI is the final word. So a command-shaped check has one execution site (the floor) and one read-only disposition site (here); assertion-bearing, `visual`, and `contract` oracles are dispositioned here regardless of what ran at the floor.
+
 **Dev-server lifecycle for the visual gate (conditional — `oracle.type == visual` only).** A `karta-verify` (non-visual) item skips all of this. For a visual item, `karta-validate` needs the app running before it can capture and compare, so bring it up here, before invoking the gate.
 
 **First, honor a provided env.** The env may already be supplied by the binder's `env_contract` or by the orchestrator (a wave-bound env, started once and torn down once for the whole wave per [references/integration-branch.md](references/integration-branch.md)). When the wave env is present, use the env it exposes (`env_contract.command`, and `env_contract.isolation_params` such as `PORT` when `supports_isolation` is true) instead of starting your own — and **do not tear it down** (the orchestrator owns it). Only when the item is directly invoked with no provided env do you manage the dev server yourself, per the steps below.
@@ -319,26 +346,51 @@ Stop **only the process or process tree this run started**, using the host's nat
 
 ### Phase 8 — (reserved)
 
-### Phase 9 — Commit, secret-scan, and merge into integration — NO PR  `build:merge`
+### Phase 9 — Commit, secret-scan, and finish the item — NO PR  `build:merge`
 
-Run from inside the worktree. There is **no PR**. The terminal state is a tagged item merged into the integration branch; the user reviews and merges that branch.
+Run from inside the worktree. There is **no PR**. The terminal state depends on `RUN_MODE` (Phase 1): a single-item hatch ends at a tagged item *merged* into the integration branch; an orchestrated wave ends at a *committed, secret-scanned item branch* carrying a durable `built` marker, which the orchestrator merges. Either way the user ultimately reviews and merges the integration branch.
 
-**9a. Secret scan before every commit.** Before each commit, run the secret scan from [references/secret-scan.md](references/secret-scan.md) against the **staged diff** only. On a hit, **block the commit and surface the finding** (file, line, matched pattern); mark the item failed with the scan output, preserve the worktree, and halt. Resolution requires removing or rotating the secret (or an in-repo allow-list entry, reviewed alongside the code) before retry.
+The integration tip has exactly one writer per [references/integration-branch.md](references/integration-branch.md). Steps 9a (secret scan) and 9b (commit) run in **both** modes; step 9c branches on `RUN_MODE`.
 
-**9b. Commit** with the item marker in the subject line:
+**9a. Secret scan before every commit.** Before each commit, run the bundled scanner [scripts/scan_secrets.py](scripts/scan_secrets.py) — `uv run skills/karta-build/scripts/scan_secrets.py` — against the **staged diff** only. One scanner for every build keeps the gate reproducible. The pattern set, the allow-list format, and the on-hit behavior are defined in [references/secret-scan.md](references/secret-scan.md). On a hit, **block the commit and surface the finding** (file, line, matched pattern); mark the item failed with the scan output, preserve the worktree, and halt. Resolution requires removing or rotating the secret (or an in-repo allow-list entry, reviewed alongside the code) before retry.
+
+**9b. Commit** with the item marker in the subject line. The canonical commit **subject** marker is:
 
 ```
 [karta:item-<item-id>] <summary>
 ```
 
-**9c. Merge into the integration branch** per [references/integration-branch.md](references/integration-branch.md):
+The `[karta:item-<item-id>]` marker is mandatory and appears verbatim — resume and integration parse it to trace the commit. `<summary>` is a short imperative description of the change.
 
-1. Rebase/merge the item branch onto the **current** integration tip (which may have advanced as wave-mates merged).
-2. **Re-validate the oracle against the merged result** — the tip moved, so the acceptance check must pass on what actually lands, not on the pre-merge branch. On a merge conflict or a re-validation failure, do a **bounded rebuild** against the new tip, or **halt** if the cap is exhausted.
+**Coexisting with Conventional Commits.** When the project's convention puts a single type prefix on the subject (`feat:`/`fix:`/`chore:`), do **not** stack the karta marker into that prefix and do **not** add a second type — a Conventional-Commits subject carries exactly one type. Keep the single CC prefix on the subject and carry the marker as a git trailer instead, one blank line after the body:
+
+```
+feat(profile): <summary>
+
+<optional body>
+
+Karta-Item: item-<item-id>
+```
+
+Either form satisfies the requirement: the bracket marker in the subject (canonical default), or the `Karta-Item: item-<item-id>` trailer when a CC prefix owns the subject. Use the trailer only when the project's convention requires a single typed subject; otherwise prefer the subject marker. Apply one form consistently across the item's commits so resume can recover the id.
+
+**9c. Finish — who merges depends on `RUN_MODE`.** The integration tip has exactly one writer; pick the branch that matches how this run was invoked, per the two modes in [references/integration-branch.md](references/integration-branch.md).
+
+**9c-single — single-item hatch (the worker owns the merge).** When `RUN_MODE` is single-item (invoked directly on one item, no wave), the worker is the only party in play, so it completes the merge itself:
+
+1. Rebase/merge the item branch onto the **current** integration tip (which may have advanced if you are resuming a partial binder).
+2. **Re-validate the oracle against the merged result** — the tip can differ from the pre-merge branch, so the acceptance check must pass on what actually lands. On a merge conflict or a re-validation failure, do a **bounded rebuild** against the new tip, or **halt** if the cap is exhausted.
 3. Merge (ff or no-ff).
 4. Write `refs/karta/<slug>/item-<item-id>/done` → the merge commit. On a halt, write `refs/karta/<slug>/item-<item-id>/failed` → the failing tip instead.
 
-**Do not open a PR.** No `gh`/`glab`/`tea`, no push-to-review, no review-status transition.
+**9c-wave — orchestrated wave (the worker commits and stops; the orchestrator merges).** When `RUN_MODE` is orchestrated, **stop at the committed item branch** — do **not** touch `karta/<slug>/integration` and do **not** write the `done` ref. The pass signal is durable git state, not an ephemeral report:
+
+1. Leave the item branch `karta/<slug>/item-<item-id>` committed (9b) and secret-scanned (9a) at its tip — this is your terminal artifact.
+2. On a clean floor + acceptance + secret scan, write the durable marker ref `refs/karta/<slug>/item-<item-id>/built` → the item-branch tip. This is the worker's pass signal; the orchestrator merges only items carrying a `built` marker. Do **not** write `done`.
+3. On a halt, write **no** `built` marker — write `refs/karta/<slug>/item-<item-id>/failed` → the failing tip instead, and surface the cause. A halted item produces no pass signal.
+4. **Stop here.** Report the committed item branch and its tip (Phase 10). The orchestrator (`karta-deliver`, `deliver:waveloop` Step 3) is the single writer of the integration tip: it runs the serial FIFO merge queue, re-validates the oracle against the moving tip before each merge (so it re-checks rather than trusting the `built` marker's word), merges, tags the wave, and writes `done`. Because the queue is serial there is no concurrency at the tip; the orchestrator's done-ref guard is resume-idempotency, not a race fix.
+
+**Do not open a PR** in either mode. No `gh`/`glab`/`tea`, no push-to-review, no review-status transition.
 
 ### Phase 10 — Report back  `build:report`
 
@@ -346,7 +398,9 @@ Brief summary to the user (~8 lines):
 
 - **Item id** and the binder slug
 - **Worktree path** — so the user knows where the checkout lives
-- **Integration tip** the item merged to (the merge commit / done ref), or the failed ref on a halt
+- **Terminal artifact** — single-item hatch: the integration tip the item merged to (merge commit / `done` ref); orchestrated wave: the committed item branch and its tip (`built` marker ref) that the orchestrator will merge; on a halt, the `failed` ref
+- **Runtime** — the active runtime version(s) the floor ran under, against the `runtime_contract` (or detected pin files); note a clean match or the mismatch that halted
+- **Generated-but-unused files** (greenfield/scaffold items only) — anything the framework generator emitted that fell outside the item's `scope`/`contract`, noted here rather than written to the read-only binder
 - **Acceptance result** — which gate ran (`karta-verify` / `karta-validate` / opted out), final disposition, rounds used, any residual finding
 - **Declared-debt summary** — every `KARTA-DEFER` marker placed (what, why, follow-up), per [references/declared-debt.md](references/declared-debt.md); a deferred item is never reported as fully complete without its deferral list
 - **Secret-scan status** — clean, or blocked-with-finding
@@ -358,12 +412,13 @@ Brief summary to the user (~8 lines):
 
 ## Gotchas
 
-- **No PR — ever.** The terminal state is a tagged item merged into `karta/<slug>/integration`. The user reviews and merges the integration branch. No `gh`/`glab`/`tea`, no review transition.
+- **No PR — ever.** The user reviews and merges the integration branch. No `gh`/`glab`/`tea`, no review transition.
+- **One writer to the integration tip — the explicit mode decides who.** Single-item hatch: the worker merges its item into `karta/<slug>/integration` and writes the `done` ref. Orchestrated wave: the worker **stops at the committed item branch** and writes the durable `built` marker (not `done`); the orchestrator/`karta-deliver` runs the serial merge queue and writes `done`. The mode is told to the worker explicitly — never inferred from repo state. See [references/integration-branch.md](references/integration-branch.md).
 - **Branch off the integration tip, not the default branch.** That tip already contains every merged dependency; building off the default branch would lose them.
 - **Dependencies must be merged before pickup.** Gate 3 checks `refs/karta/<slug>/item-<dep>/done` for every `depends_on`; an unmet dependency halts.
 - **The binder is read-only to build.** A build step never edits the plan that governs it — that would corrupt its own governance.
 - **Never weaken the oracle.** Don't edit or soften the acceptance assertions or contract to make a check pass. On a genuine conflict, halt — code/specs/tests win.
-- **Commit marker is mandatory.** Every commit subject carries `[karta:item-<id>]` so resume and integration can trace it.
+- **Commit marker is mandatory.** Every commit carries `[karta:item-<id>]` so resume and integration can trace it — in the subject by default, or as a `Karta-Item: item-<id>` git trailer when a Conventional-Commits type prefix owns the subject (never stack the marker into the CC prefix or add a second type).
 - **Secret scan before every commit.** It inspects the staged diff and blocks on a hit. Block, surface, mark failed, preserve the worktree — don't write the commit.
 - **Acceptance caps differ on purpose.** Safety/boundary gate: 3 attempts then escalate to the human. Acceptance/contract gate: 2 attempts then halt-with-CTA. The gate kicks findings back to build for bounded self-correction; only exhaustion halts.
 - **Re-validate the oracle against the merged tip.** A text-clean merge can still break semantics (a wave-mate renamed a helper). The acceptance check must pass on what lands, not on the pre-merge branch.
@@ -377,5 +432,9 @@ Brief summary to the user (~8 lines):
 - **Declare deferrals inline.** A skipped test or stubbed dependency gets a `KARTA-DEFER` marker at the site; the report surfaces every one. A deferred item is never reported as fully done without its list.
 - **Opt-outs are explicit and surfaced.** When `oracle.opt_out` is set, skip acceptance (not the floor), record the reason, and report it. There is no silent opt-out.
 - **The floor is non-negotiable.** A change that won't compile / type-check / lint does not earn an acceptance review — it earns a surfacing.
+- **Check the runtime before the floor — never auto-provision.** A floor command can hard-refuse on a runtime mismatch. The preflight compares the active runtime against the binder's `runtime_contract` (or detected pin files) and **halts with a CTA** on a mismatch; `on_unavailable` carries the single value `halt`. karta does not install or select a runtime — provisioning is the operator's, a hermeticity/supply-chain concern. The floor/oracle commands may route through the repo's own declared version manager (`mise exec -- …`).
+- **Floor RUNS, acceptance INSPECTS — one check, two altitudes.** Floor commands execute in-worktree; the acceptance gate is read-only and dispositions assertions against the diff (it does not re-run the command). When the oracle `command` overlaps a floor check it simply runs at the floor — not a second phase. The merge re-validates on the merged tip (single-item mode); CI is final.
+- **Greenfield items scaffold, then provision the named check.** Foundation/first item only (no integration branch yet, contract is to stand up the project): the framework's own official generator (`ng new`, `create-next-app`, …) is allowed; bound the result to the item's `scope.included`/`contract`, clean the framework's placeholder branding, re-resolve the toolchain/oracle commands after the generator runs, and note generated-but-unused files in the report. When the bare scaffold lacks a check the oracle names, add it through the framework's own add/plugin command (e.g. `ng add @angular-eslint/schematics`) — and if no official mechanism exists, halt. A check that exists but fails is a real failure, never the absent-check carve-out; never weaken or skip the oracle.
+- **Co-owned files are additive only.** An item may extend a file an earlier depended-on item created (registering a route, mounting a component) when it is inside the binder's `scope.included` — smallest wiring change, no broader refactor. A rewrite of shared structure is unauthorized blast-radius: flag and ask. Two wave-mates on one file is the orchestrator's serialization concern (`serialize` / `shared_resources`).
 - **Preserve the failing worktree on halt and print its path.** Don't tear it down — the user needs it to resume.
 - **Don't re-plan.** The plan lives in the binder. Your job is execution of one item, not re-planning. The planning counterpart is `karta-plan`.

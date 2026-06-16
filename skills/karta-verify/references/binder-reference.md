@@ -16,7 +16,30 @@ The binder is karta's spine — the single JSON artifact that drives planning, b
 | `env_contract.command` | string | yes | The project's own test/dev env command |
 | `env_contract.supports_isolation` | boolean | yes | Whether the command accepts injectable isolation params |
 | `env_contract.isolation_params` | string[] | no | Params that make runs isolated, e.g. `PORT`, `COMPOSE_PROJECT_NAME` |
+| `env_contract.cwd` | string | no | Directory the env command runs in, relative to the worktree root; default is the worktree root (see Execution context) |
+| `runtime_contract` | object \| null | no | Declares the runtimes the env needs; null or absent when no runtime floor is recorded (see The runtime contract) |
+| `runtime_contract.runtimes` | object[] | no | Required language/toolchain runtimes the planner survey detected |
+| `runtime_contract.runtimes[].name` | string | yes (in entry) | Runtime, e.g. `node`, `python`, `go` |
+| `runtime_contract.runtimes[].required` | string | yes (in entry) | Required version or range, e.g. `24.15`, `3.13`, `>=24.15.0` |
+| `runtime_contract.runtimes[].manager_file` | string \| null | no | Pin file the requirement was read from, e.g. `.nvmrc`, `.tool-versions`, `.python-version` |
+| `runtime_contract.runtimes[].source` | string | no | Where the requirement was read, e.g. `package.json engines`, `pyproject` |
+| `runtime_contract.on_unavailable` | `halt` | no | Policy when the active runtime does not satisfy the declaration; the only value is `halt` |
 | `work_items` | WorkItem[] | yes | Ordered list of work items (at least one) |
+
+## The runtime contract
+
+`env_contract` says how to start the env; the optional `runtime_contract` says which language and toolchain runtimes that env needs. It records a runtime floor up front instead of leaving it to be discovered when a CLI hard-refuses — npm `engines` with engine-strict, a framework CLI that demands a minimum Node, an interpreter that rejects an old version. Omit it (or set it to `null`) when the project has no runtime floor worth recording.
+
+karta does not install or select runtimes for you. Doing so would reach outside the worktree and pull an unpinned toolchain onto the host — a hermeticity and supply-chain hazard. The contract only **declares and detects**; it never auto-provisions.
+
+Each `runtimes` entry pins one runtime: `name` (`node`, `python`, `go`, …), the `required` version or range (e.g. `node` `24.15`, `python` `3.13`), the `manager_file` the requirement was read from (`.nvmrc`, `.tool-versions`, `.python-version`, a `package.json` `engines` entry, or `pyproject`), and the `source` it was read from. `on_unavailable` has exactly one value, `halt`: when the active runtime does not satisfy the declaration, karta stops and reports rather than guessing or installing.
+
+The two roles split cleanly:
+
+- **karta-plan** runs the survey once during project configuration. It reads the pin files (`.nvmrc`, `.tool-versions`, `.python-version`, `package.json` `engines`, `pyproject`) and writes the detected floor into `runtime_contract`.
+- **karta-build** runs a preflight before the deterministic floor. It checks the active runtime against the declaration. On a match it proceeds; on a mismatch it **halts** with an actionable call to action — the same hard-gate idiom karta uses for `playwright-cli` and `uv`: surface the gap, name the fix, do not auto-fix it.
+
+When the repo declares a version manager, the `env_contract.command` or an oracle `command` may route through it (e.g. `mise exec -- <command>`) so the declared runtime is the one that runs. That is the repo's own manager doing the selection inside the worktree — karta still installs nothing.
 
 ## Per-work-item fields
 
@@ -65,6 +88,47 @@ The schema allows two shapes:
 ```
 
 Opt-outs are explicit and recorded, never silent. The `reason` field is required. After a run, karta reports every opted-out item and its reason so nothing slips through unnoticed. For the full rules on the floor and opt-out policy, see `definition-of-done.md`.
+
+## Execution context — where the command runs and how tools resolve
+
+An oracle `command` (and the `env_contract.command`) is one shell string, so the binder must also say **where** it runs and **how** its tools are found. Otherwise a multi-root repo — say a Python service at the repo root with a `.venv`, plus an Angular app under `frontend/` — is ambiguous: neither toolchain is on `PATH`, and the same string cannot sit at two roots.
+
+**Working directory.** The optional `cwd` field names the directory the command runs in, **relative to the worktree root**. Omit it and the command runs at the worktree root. In a multi-root or polyglot repo, set `cwd` to the toolchain's own root — e.g. `cwd: "frontend"` for the Angular command, no `cwd` (or `cwd: "."`) for the root Python command.
+
+**Multi-root commands use the runner's own targeting — never a synthetic root.** When two roots must be driven from one place, express it with the task runner's built-in root-targeting flag rather than inventing structure:
+
+| Runner | Run rooted at a sub-path |
+|-|-|
+| npm | `npm --prefix <dir> run <script>`, or workspaces `npm -w <workspace> run <script>` |
+| pnpm | `pnpm -C <dir> <script>`, or `pnpm --filter <pkg> <script>` |
+| yarn (berry) | `yarn workspace <name> <script>` |
+| make | `make -C <dir> <target>` |
+| just | `just --justfile <dir>/justfile <recipe>` (or `-d <dir>`) |
+| Nx / Turbo | run from the repo root, target by project name (`nx run <proj>:<target>`, `turbo run <task> --filter=<proj>`) |
+
+Do **not** add a root `package.json`, a `bin/` wrapper, or a hand-assembled `PATH` to make a bare command work — that is invented machinery the runner already provides.
+
+**Project-local toolchains resolve through their own entrypoint, not a global install.**
+
+- **Node:** invoke the binary through its package script or the runner — `npm`/`pnpm`/`yarn run` prepend that package's `node_modules/.bin` to `PATH` for the script, so `ng`, `tsc`, `eslint`, `vite` resolve with no global install and no shim. `npx`/`pnpm exec` do the same for a one-off.
+- **Python:** run through `uv run <command>` (executes inside the project's `.venv` with no manual activation) or the project's documented venv entrypoint — not by hand-editing `PATH` or sourcing an activate script inside the command string.
+- **Task runners** (`make`, `just`, Nx, Turbo) already run their recipes with the project environment set up; prefer the documented entrypoint over re-deriving it.
+
+When the project declares a runtime floor (see The runtime contract), a command may also route through the repo's own version manager — e.g. `mise exec -- <command>` — so the declared runtime is the one that resolves.
+
+## Optional and nullable fields
+
+State a field's optionality and nullability explicitly so an oracle can verify it. The two are different:
+
+- **Optional** — the key may be absent. Anything in the schema's `properties` but not in `required` is optional. Use this for a field that simply may not apply ("not asked").
+- **Nullable** — the key is present but its value may be `null` (`"type": ["<type>", "null"]`). Use this for a field that always appears but whose value can be genuinely empty ("asked, and the answer is none").
+
+A logically-absent value is `null`; a present-but-empty collection is `[]` or `{}`; only a deliberately empty text value is `""`. Modelling a possibly-absent field as a required non-null string forces a seeded placeholder and defeats verification — prefer nullable, and seed genuine absence as `null`.
+
+The `contract` field shows both forms, because the schema allows `object | string | null`:
+
+- **Null whole field.** When an item has no interface at all — no upstream dependency to consume, nothing to expose — set `contract` to `null`, **never to an empty string `""`**. An empty string is a value, not an absence: it reads as "the upstream is the empty interface" rather than "there is no upstream," which an oracle cannot tell apart from a real-but-blank contract.
+- **Absent inner field of an object contract.** When `contract` is an object but one part of the interface does not apply — say the item exposes an output but consumes no input — leave that inner key absent (or `null`) rather than seeding it with `""` or `{}`. The same rule recurses: an absent inner field means "this part is not part of the interface," which an oracle can check, while a blank placeholder cannot be told apart from a real empty value.
 
 ## On disk and resume
 
