@@ -61,6 +61,12 @@ Both are **read-only verification gates** dispatched by `karta-verify` (and, for
 - **`karta-acceptance-reviewer`** — judges the diff against the work item's `oracle`/`contract` assertion by assertion: verdict `CONFORMANT | DEVIATION | BLOCKED | SPEC-SUSPECT`.
 - **`karta-safety-auditor`** — re-runs the seven smart-surfaced-review signals against the real diff and flags any sensitive, destructive, or contract crossing the item never justified: verdict `PASS | VIOLATION`.
 
+## Plain language, built in
+
+karta carries its own writing standard and applies it to everything it shows you — run reports, halt calls-to-action, the accept/defer prompt, plan and opt-out summaries. The aim is plain: read it once and act, no rereading.
+
+It ships the **`karta-plainlanguage`** skill in the plugin, so karta reads the same way wherever it runs — no dependence on your own setup. The rule and its scope (what counts as user-facing prose, and what stays exact — code, refs, the machine envelope) live in [`skills/_shared/user-facing-prose.md`](skills/_shared/user-facing-prose.md); each skill and gate agent points to it where it talks to you. The full skill is [`skills/karta-plainlanguage/SKILL.md`](skills/karta-plainlanguage/SKILL.md).
+
 ## Cross-cutting
 
 - **Stack-agnostic.** No skill assumes a component library, framework, data layer, branch convention, or repo layout. UI is one stack among many, not the only one — concrete tools in the docs (Next.js, Style Dictionary, `playwright-cli`, `localhost:3000`, …) are **examples**, resolved per project.
@@ -84,6 +90,7 @@ karta/
     karta-build/     SKILL.md  +  references/…
     karta-verify/    SKILL.md  +  references/verification-gate.md
     karta-validate/  SKILL.md  +  scripts/{serve_design.py, capture_view.py}
+    karta-plainlanguage/  SKILL.md                 (bundled writing standard)
 ```
 
 Skills and agents are both auto-discovered: each skill is a directory whose `SKILL.md` carries the frontmatter and workflow (with heavy material in `references/` loaded on demand), and each agent is a markdown file under `agents/` with `name`/`description` frontmatter. The plugin manifests do not enumerate either.
@@ -104,4 +111,4 @@ karta ships as a self-contained Claude Code plugin + marketplace (the `.claude-p
 /plugin install karta@karta
 ```
 
-This registers all five skills, namespaced under the plugin — `karta:karta-plan`, `karta:karta-deliver`, `karta:karta-build`, `karta:karta-verify`, `karta:karta-validate` — plus the two gate agents. (Pre-1.0: the names keep the `karta-` prefix; they may shorten at a stable release.)
+This registers all six skills, namespaced under the plugin — the five pipeline skills (`karta:karta-plan`, `karta:karta-deliver`, `karta:karta-build`, `karta:karta-verify`, `karta:karta-validate`) plus `karta:karta-plainlanguage` — and the two gate agents. (Pre-1.0: the names keep the `karta-` prefix; they may shorten at a stable release.)
