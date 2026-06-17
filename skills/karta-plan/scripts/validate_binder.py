@@ -9,7 +9,9 @@ Usage:
   uv run validate_binder.py --self-test          # run embedded fixtures, exit 0/1
 """
 from __future__ import annotations
-import argparse, json, sys
+import argparse, json, posixpath, sys
+from fnmatch import fnmatch
+from itertools import combinations
 from pathlib import Path
 from jsonschema import Draft202012Validator
 
@@ -60,7 +62,71 @@ def validate_binder(binder: dict) -> list[str]:
     for i in graph:
         if color[i] == WHITE:
             visit(i, [i])
+
+    if not errors:
+        errors.extend(_wave_collision(items))
     return errors
+
+
+def _paths_overlap(a_paths: list[str], b_paths: list[str]) -> list[str]:
+    """Do two `touches` lists name any common file? Beyond literal equality this
+    normalizes `./` and redundant separators, expands a glob entry against concrete
+    entries (fnmatch), and treats a directory-prefix of another path as an overlap.
+    Glob-vs-glob is not expanded (rare; left to serialize/shared_resources)."""
+    def is_glob(p: str) -> bool:
+        return any(c in p for c in "*?[")
+
+    hits: set[str] = set()
+    for x in a_paths:
+        nx, gx = posixpath.normpath(x.strip()), is_glob(x)
+        for y in b_paths:
+            ny, gy = posixpath.normpath(y.strip()), is_glob(y)
+            if nx == ny:
+                hits.add(nx)
+            elif gx and not gy and fnmatch(ny, nx):
+                hits.add(f"{x.strip()} ~ {y.strip()}")
+            elif gy and not gx and fnmatch(nx, ny):
+                hits.add(f"{x.strip()} ~ {y.strip()}")
+            elif not gx and not gy and (ny.startswith(nx + "/") or nx.startswith(ny + "/")):
+                hits.add(f"{x.strip()} ~ {y.strip()}")
+    return sorted(hits)
+
+
+def _wave_collision(items: list[dict]) -> list[str]:
+    """Flag item pairs that can land in the SAME wave and both `touches` a file,
+    without declaring serialize or a shared resource to order them. Items with a
+    dependency path between them land in different waves, so they never collide."""
+    deps = {it["id"]: set(it.get("depends_on", [])) for it in items}
+
+    def reachable(start: str) -> set[str]:
+        seen: set[str] = set()
+        stack = list(deps.get(start, ()))
+        while stack:
+            n = stack.pop()
+            if n in seen:
+                continue
+            seen.add(n)
+            stack.extend(deps.get(n, ()))
+        return seen
+
+    trans = {i: reachable(i) for i in deps}
+    by_id = {it["id"]: it for it in items}
+    out: list[str] = []
+    for a, b in combinations(list(deps), 2):
+        if a in trans[b] or b in trans[a]:
+            continue  # a dependency path sequences them into different waves
+        overlap = _paths_overlap(by_id[a].get("touches", []), by_id[b].get("touches", []))
+        if not overlap:
+            continue
+        if by_id[a].get("serialize") or by_id[b].get("serialize"):
+            continue  # an explicit-serialize item never shares a build slot
+        if set(by_id[a].get("shared_resources", [])) & set(by_id[b].get("shared_resources", [])):
+            continue  # a co-declared shared resource serializes the whole pair, so no file is edited concurrently
+        out.append(
+            f"graph: items '{a}' and '{b}' can run in the same wave and both touch "
+            f"{overlap}, but neither sets serialize nor shares a shared_resources entry"
+        )
+    return out
 
 
 def opt_out_summary(binder: dict) -> list[str]:
@@ -90,12 +156,70 @@ def _run_self_test() -> int:
         "slug": "o", "motivation": "x", "scope": {"included": ["x"]},
         "work_items": [{"id": "a", "title": "A", "oracle": {"opt_out": True}}],
     }
+    _u = {"type": "unit"}
+    collide = {
+        "slug": "collide", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [
+            {"id": "a", "title": "A", "touches": ["app/models.py"], "oracle": _u},
+            {"id": "b", "title": "B", "touches": ["app/models.py"], "oracle": _u},
+        ],
+    }
+    collide_serialize = {
+        "slug": "collide-ser", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [
+            {"id": "a", "title": "A", "touches": ["app/models.py"], "serialize": True, "oracle": _u},
+            {"id": "b", "title": "B", "touches": ["app/models.py"], "oracle": _u},
+        ],
+    }
+    collide_dep = {
+        "slug": "collide-dep", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [
+            {"id": "a", "title": "A", "touches": ["app/models.py"], "depends_on": ["b"], "oracle": _u},
+            {"id": "b", "title": "B", "touches": ["app/models.py"], "oracle": _u},
+        ],
+    }
+    collide_shared = {
+        "slug": "collide-shared", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [
+            {"id": "a", "title": "A", "touches": ["db/x.sql"], "shared_resources": ["db/schema"], "oracle": _u},
+            {"id": "b", "title": "B", "touches": ["db/x.sql"], "shared_resources": ["db/schema"], "oracle": _u},
+        ],
+    }
+    collide_glob = {
+        "slug": "collide-glob", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [
+            {"id": "a", "title": "A", "touches": ["app/*.py"], "oracle": _u},
+            {"id": "b", "title": "B", "touches": ["./app/models.py"], "oracle": _u},
+        ],
+    }
+    no_collide = {
+        "slug": "no-collide", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [
+            {"id": "a", "title": "A", "touches": ["app/a.py"], "oracle": _u},
+            {"id": "b", "title": "B", "touches": ["app/b.py"], "oracle": _u},
+        ],
+    }
+    collide_transitive = {
+        "slug": "collide-trans", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [
+            {"id": "a", "title": "A", "touches": ["app/x.py"], "depends_on": ["b"], "oracle": _u},
+            {"id": "b", "title": "B", "depends_on": ["c"], "oracle": _u},
+            {"id": "c", "title": "C", "touches": ["app/x.py"], "oracle": _u},
+        ],
+    }
     cases = [
         ("valid example", valid, True),
         ("cyclic deps", cyclic, False),
         ("dangling dep", dangling, False),
         ("missing oracle", no_oracle, False),
         ("opt-out without reason", optout_no_reason, False),
+        ("same-wave file collision", collide, False),
+        ("file collision but serialized", collide_serialize, True),
+        ("file overlap across a dependency edge", collide_dep, True),
+        ("file overlap with shared resource", collide_shared, True),
+        ("glob/normalized same-wave collision", collide_glob, False),
+        ("same-wave different files", no_collide, True),
+        ("file overlap across a transitive edge", collide_transitive, True),
     ]
     failures = 0
     for name, binder, should_pass in cases:

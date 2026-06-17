@@ -56,9 +56,9 @@ Before dispatching, apply the gates from [references/parallelism-gates.md](refer
 | Gate | Trigger |
 |-|-|
 | Dependency edge | dep not yet merged (correctness) |
-| Shared / order-sensitive resource | wave-mates touch the same stateful resource — inferred file-overlap or a declared annotation |
+| Shared / order-sensitive resource | wave-mates touch the same stateful resource — from a co-declared `shared_resources` annotation or overlapping `touches` manifests, else inferred from the item plans |
 | Stateful env without injectable isolation | the repo's env command can't be parameterized |
-| File-collision risk | wave-mates likely edit the same files |
+| File-collision risk | wave-mates' `touches` manifests overlap (or, absent manifests, they likely edit the same files); `validate_binder.py` already flagged this at plan time when neither declares `serialize`/`shared_resources` |
 | Explicit `serialize` | the binder marks the item must-serialize |
 
 An item with `serialize: true` runs alone — no parallel build mates for that slot.
@@ -75,7 +75,7 @@ Before the merge pass, tag `karta/<slug>/wave-<N>-base` on the pre-merge integra
 
 After each merge: write `refs/karta/<slug>/item-<id>/done` → the merge commit. The `done` ref is written **here, by the orchestrator** — never by the worker in a wave.
 
-**Step 4 — Post-wave integration check.** Run the project's build/type-check on the new integration tip. On failure, revert the integration branch to `karta/<slug>/wave-<N>-base` and halt with a call to action — this catches semantic collisions that text-clean merges miss (e.g. item A renames a helper, item B used the old name). After the post-wave check passes, tag `karta/<slug>/wave-<N>` on the completed tip.
+**Step 4 — Post-wave integration check.** Run the project's build/type-check on the new integration tip. On failure, **revert the wave** and halt with a call to action — this catches semantic collisions that text-clean merges miss (e.g. item A renames a helper, item B used the old name). Reverting the wave is more than rewinding the branch: `git reset --hard` the integration branch to `karta/<slug>/wave-<N>-base` **and delete both the `done` and `built` refs of every item merged in this wave** (the `wave-<N>` success tag is never written, since this check failed before it). Those items return to their unbuilt state — only the item branches remain, as a diagnostic — so a resumed run re-derives the frontier and **rebuilds** them against the rewound tip instead of skipping them as already-done; leaving the refs behind would orphan the reverted commits and break resume-idempotency (see [references/integration-branch.md](references/integration-branch.md)). After the post-wave check passes, tag `karta/<slug>/wave-<N>` on the completed tip.
 
 Repeat the loop for the next frontier until all items are built or a halt stops the run.
 
@@ -99,7 +99,7 @@ Tear the wave env down once at the end of the wave, after the post-wave check (S
 - Items that passed merge normally.
 - The failing item halts with a call to action naming the cause.
 - Only the failing item's dependents wait; the rest of the frontier continues.
-- After the wave, the user may **revert the wave** (`git reset --hard karta/<slug>/wave-<N>-base`) or continue with the partial result.
+- After the wave, the user may **revert the wave** (rewind to `karta/<slug>/wave-<N>-base` and delete the merged items' `done`/`built` refs — the full operation in [references/integration-branch.md](references/integration-branch.md), Revert-the-wave, not a bare branch reset) or continue with the partial result.
 
 **Cleanup.** At the end of each wave:
 
@@ -142,5 +142,5 @@ After the final wave (or halt), report:
 - **A single-item binder skips deliver.** Hand directly to `karta-build`. There is no wave to schedule, no integration branch to assemble across items.
 - **No PR — ever.** The terminal state is a tagged, assembled integration branch. No `gh`/`glab`/`tea`, no review transition.
 - **The orchestrator owns the merge; wave workers stop at a committed item branch.** In a wave, `karta-build` builds its item, runs its floor + acceptance + secret scan, commits the item branch, and writes `refs/karta/<slug>/item-<id>/built` → its tip — then stops. It never merges into `karta/<slug>/integration` and never writes `done`. karta-deliver is the single writer of the integration tip: it merges only items carrying a `built` marker, in serial FIFO, re-validating each item's oracle against the moving tip (it does **not** trust the worker's verdict — the marker says "built", not "still passes the moved tip"), tags `wave-<N>-base`, runs the post-wave check, and writes each `done` ref. Resume is idempotent: an item whose `done` ref already exists is skipped. (The single-item hatch is the exception — handed straight to `karta-build`, which then merges itself; see the two modes in [references/integration-branch.md](references/integration-branch.md).)
-- **Post-wave check reverts on failure.** The pre-merge tag (`wave-<N>-base`) is the revert anchor. A semantic collision the floor missed (e.g. two items independently modifying the same helper) is caught here, not silently merged.
+- **Post-wave check reverts on failure.** The pre-merge tag (`wave-<N>-base`) is the revert anchor. A semantic collision the floor missed (e.g. two items independently modifying the same helper) is caught here, not silently merged. Reverting rewinds the branch **and** deletes the wave's `done` and `built` refs (so reverted items return to unbuilt and don't falsely read as integrated, which would break resume); only the item branches stay, as a diagnostic, and a resumed run rebuilds those items.
 - **Preserve failing worktrees.** Clean up passing and abandoned worktrees; leave the failing item's worktree in place and print the path.

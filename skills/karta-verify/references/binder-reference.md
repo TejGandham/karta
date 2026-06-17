@@ -55,6 +55,7 @@ When the repo declares a version manager, the `env_contract.command` or an oracl
 | `contract` | object \| string \| null | no | The open-shape interface this item exposes or consumes |
 | `serialize` | boolean | no | When true, this item runs alone — no parallel build mates (default: false) |
 | `shared_resources` | string[] | no | Resources that cannot be accessed concurrently, e.g. `db/migrations` |
+| `touches` | string[] | no | Concrete files/paths this item creates or modifies; feeds the file-collision + shared-resource parallelism gates and `validate_binder.py`'s same-wave overlap check |
 | `surface.flagged` | boolean | no | Whether karta has flagged this item for human review |
 | `surface.signals` | string[] | no | Human-readable reasons for the flag |
 | `oracle` | Oracle | yes | How karta verifies the item is done |

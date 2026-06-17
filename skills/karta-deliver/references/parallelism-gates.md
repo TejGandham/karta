@@ -5,9 +5,9 @@ karta runs work items in parallel by default and drops to serial only when runni
 | Gate | Trigger |
 |-|-|
 | Dependency edge | dep not yet merged (correctness) |
-| Shared / order-sensitive resource | wave-mates touch the same stateful resource — inferred file-overlap or a declared annotation |
+| Shared / order-sensitive resource | wave-mates touch the same stateful resource — from a co-declared `shared_resources` annotation or overlapping `touches` manifests, else inferred from the item plans |
 | Stateful env without injectable isolation | the repo's env command can't be parameterized |
-| File-collision risk | wave-mates likely edit the same files |
+| File-collision risk | wave-mates' `touches` manifests overlap (or, absent manifests, they likely edit the same files); `validate_binder.py` flags this at plan time when neither declares `serialize`/`shared_resources` |
 | Explicit `serialize` | the binder marks items must-serialize |
 
 ## How to explain parallelism to users
@@ -21,7 +21,7 @@ Item B uses something Item A creates, so B can't be built until A exists. B wait
 A few things can only be changed one at a time, in a set order — a database migration, a shared lock file, a generated file. If two items both change one of these at once, they clobber each other. karta catches this either by noticing both items plan to edit the same such file, or because the binder says these items share that resource. Example: two items that each add a database migration must run one after the other.
 
 3. Two items in the same batch would edit the same files.
-Even when neither item needs the other, if both edit the same file, building them side by side means their changes collide when karta stacks the results together. So karta runs them one at a time to avoid the merge mess. Example: two items that both edit the global stylesheet.
+Even when neither item needs the other, if both edit the same file, building them side by side means their changes collide when karta stacks the results together. So karta runs them one at a time to avoid the merge mess. Example: two items that both edit the global stylesheet. karta knows which files each item touches from its `touches` manifest when the plan provides one (otherwise it infers from the item's description), and `validate_binder.py` flags two same-wave items whose `touches` overlap unless one carries `serialize` or they share a `shared_resources` entry.
 
 Editing a file an earlier item created is fine, and common. A later item may extend a file that an earlier item it depends on already produced — registering its route in an app shell's `app.ts`, mounting its endpoint in a `main.py` — as long as that file sits inside the binder's `scope.included`. The dependency edge (#1) already keeps the earlier item finished and merged before the later one starts, so the later item builds on top of a settled file, not against one in flight. There is no per-item scope; `scope.included` is the binder's one shared boundary, and any item may touch anything inside it that its work calls for.
 

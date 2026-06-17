@@ -13,7 +13,7 @@ Item B uses something Item A creates, so B can't be built until A exists. B wait
 A few things can only be changed one at a time, in a set order — a database migration, a shared lock file, a generated file. If two items both change one of these at once, they clobber each other. karta catches this either by noticing both items plan to edit the same such file, or because the binder says these items share that resource. Example: two items that each add a database migration must run one after the other.
 
 3. Two items in the same batch would edit the same files.
-Even when neither item needs the other, if both edit the same file, building them side by side means their changes collide when karta stacks the results together. So karta runs them one at a time to avoid the merge mess. Example: two items that both edit the global stylesheet.
+Even when neither item needs the other, if both edit the same file, building them side by side means their changes collide when karta stacks the results together. So karta runs them one at a time to avoid the merge mess. Example: two items that both edit the global stylesheet. karta knows which files an item will touch from its `touches` list when the plan provides one (otherwise it works it out from the item's description), and it checks this at plan time — flagging two same-wave items that would edit the same file unless you've marked one to run alone or said they share a resource.
 
 4. You said so.
 You can mark items in the binder as "don't run these together." This is your override for interference karta can't see — you know two items will step on each other for a reason that isn't visible in the file list.

@@ -96,6 +96,7 @@
         },
         "serialize": { "type": "boolean", "default": false },
         "shared_resources": { "type": "array", "items": { "type": "string" } },
+        "touches": { "type": "array", "items": { "type": "string" }, "description": "files/paths this item creates or modifies (concrete paths, directory prefixes, or globs all match); drives the parallelism file-collision + shared-resource gates and the validator's same-wave overlap check" },
         "surface": {
           "type": "object",
           "additionalProperties": false,
