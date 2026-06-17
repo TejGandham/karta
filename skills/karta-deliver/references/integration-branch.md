@@ -11,7 +11,7 @@ Each binder gets a dedicated integration branch `karta/<slug>/integration`, kept
 
 ## Serial merge queue
 
-Completed items enter a FIFO queue by completion time; the orchestrator processes one merge at a time (the "lock" is sequential processing). For each: rebase/merge the item branch onto the current integration tip → on conflict, bounded rebuild against the new tip, else halt → re-run the item oracle on the merged result → merge (ff or no-ff) → tag and write the done ref.
+Completed items enter a FIFO queue by completion time; the orchestrator processes one merge at a time (the "lock" is sequential processing). For each: rebase/merge the item branch onto the current integration tip → on conflict, bounded rebuild against the new tip, else halt → re-run the item oracle on the merged result → merge (ff or no-ff) → tag and write the done ref. On resume, an item carrying a `built` marker but no `done` ref (committed but unmerged when a prior run stopped) is recovered by this same queue — re-validated and merged from its existing built branch — **not** rebuilt; re-dispatching it to `karta-build` would trip its worktree clobber-guard (the branch already exists), stopping the run.
 
 ## Merge ownership — two modes
 

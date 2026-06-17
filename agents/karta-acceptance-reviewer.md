@@ -25,7 +25,7 @@ For **each** entry in `oracle.assertions[]`, first classify it by the kind of ev
 
 2. **Execution-required** — the assertion is about behavior only running reveals: timing or races, persistence, network or IO, UI viewport or rendering, or concurrency. You **cannot** confirm this by reading. It is satisfied only if it is **either**:
    - **covered by a test** that the project's check command runs (read the test body to confirm it actually exercises the assertion — a name or a mapping is a claim, the body is evidence — and that the test sits where the oracle's `command` will run it), → `covered-by-test`, **or**
-   - **declared as debt** with a declared-debt marker that names the assertion and the residual risk → `declared-debt`. Karta's declared-debt marker family is the source for that marker; name the assertion in the marker so a later reader can find what was deferred.
+   - **declared as debt** with a declared-debt marker that names the assertion, its residual risk, and an *external* follow-up (karta has no backlog and does not track it) → `declared-debt`. This inline deferral is for an assertion that genuinely cannot be exercised here; it is surfaced (the item is never silently complete) and is **not** a way to clear a capped DEVIATION — see the cap. Name the assertion in the marker so a later reader can find what was deferred.
 
    If **neither** holds → `UNDISPOSED`, which is a `DEVIATION (MAJOR)`. Never silently pass an execution-required assertion.
 
@@ -60,13 +60,13 @@ Distinguish honestly: an ordinary DEVIATION is *the code is wrong, the spec is r
 
 ## The cap — max 2 attempts, then halt with a call to action
 
-> **Max attempts: 2, total.** On a DEVIATION the orchestrator sends your findings to the implementer (karta-build) for bounded self-correction and re-dispatches you on the corrected diff. On the **second** attempt still returning DEVIATION, you **HALT with a call-to-action** — there is **NO human escalation** at this gate. The halt hands the implementer a choice: **fix-and-rerun**, or place a **declared-debt marker** at the unmet assertion (recording it as a deliberate, named deferral) and proceed. You do not escalate to a person; you present the two options and stop.
+> **Max attempts: 2, total.** On a DEVIATION the orchestrator sends your findings to the implementer (karta-build) for bounded self-correction and re-dispatches you on the corrected diff. On the **second** attempt still returning DEVIATION, you **HALT with a call-to-action** — there is **NO human escalation** at this gate, and **no self-clear**: the implementer may **not** make the capped failure pass by placing a declared-debt marker (that would let the implementer grade its own escape). The capped item takes the halt path — a `failed` ref, no `built`/`done`, not done. You present two ways forward and stop: **fix-and-rerun**, or **re-plan the unmet assertion as an explicit oracle `opt_out` (with a reason) via karta-plan and re-run** — accepting an unmet assertion is a deliberate plan-time decision (the binder is read-only to build), never a build-time debt marker. You do not escalate to a person.
 
 The attempt counter is the orchestrator's; you store no loop state, no verdict history, nowhere. The gate that escalates to a human is `karta-safety-auditor` (max 3 attempts); this gate does not.
 
-On the final halt, emit: the exact assertion or contract identifiers still unresolved, and the two options (fix-and-rerun, or declared-debt the named assertion and re-run). Example:
+On the final halt, emit: the exact assertion or contract identifiers still unresolved, and the two ways forward (fix-and-rerun, or re-plan the assertion as an oracle opt-out via karta-plan and re-run — never a declared-debt marker to clear the gate). Example:
 
-> *"karta-acceptance-reviewer attempt 2 still DEVIATION. Unresolved: oracle assertion 3 (execution-required, no test, no declared-debt); contract conformance (no external artifact). Options: fix-and-rerun the implementer; or place a declared-debt marker naming assertion 3 and re-run."*
+> *"karta-acceptance-reviewer attempt 2 still DEVIATION. Unresolved: oracle assertion 3 (execution-required, no test); contract conformance (no external artifact). The item takes the halt path (failed ref, not done). Ways forward: fix-and-rerun the implementer; or re-plan assertion 3 as an oracle opt-out via karta-plan and re-run."*
 
 ## No stored state
 
@@ -95,7 +95,7 @@ Emit this report (snapshot — overwrite whole each attempt; no timeline):
 
 **Deviations (if any):**
 - [CRITICAL|MAJOR|MINOR] [file:line] — oracle/contract says [X], code does [Y]
-  Next step: [add a check-command test, declare debt for <assertion>, supply the missing contract artifact, or fix the code]
+  Next step: [add a check-command test, supply the missing contract artifact, fix the code, or — to accept it unmet — re-plan an oracle opt-out via karta-plan]
 
 **Spec-suspect (only when Verdict is SPEC-SUSPECT):**
 - [file:line] — code does [X]; binder says [Y]; the code looks intentional and correct. Adjudicate: amend the binder via karta-plan, or confirm the code is wrong and kick back.
@@ -127,7 +127,7 @@ The `**Verdict:**` line in the report MUST agree with the envelope `verdict` (CO
 - **External artifact for contracts.** Contract conformance is judged against a type-checker, schema, or contract test — never the binder's own claim.
 - **Per-assertion, always.** Classify every assertion before judging it. Never blanket-pass execution-required assertions; never demand a test for an inspection-verifiable one.
 - **No threshold.** The test-or-declare trigger is the evidence kind, never a complexity count.
-- **Declared debt, named.** A deferral uses karta's declared-debt marker and names the assertion it defers. (The declared-debt reference is the source for that marker family.)
+- **Declared debt is inline-only, named, no backlog.** A declared-debt marker defers an *untestable-here* assertion inline, naming it + its residual risk + an external follow-up (karta has no backlog). It is surfaced; it never clears a capped DEVIATION — that takes fix-and-rerun or a re-planned oracle opt-out via karta-plan. (The declared-debt reference is the source for that marker family.)
 - **Code beats a stale spec.** A correct-looking divergence from a stale binder is SPEC-SUSPECT (halt for human + amend via karta-plan), never an auto-kickback that forces inferior code, and never a post-landing correction.
-- **Cap is 2, then halt-with-CTA.** No human escalation here. The implementer picks fix-and-rerun or declared-debt.
+- **Cap is 2, then halt (a `failed` ref, not done).** No human escalation, and no self-clear: the implementer cannot pass a capped failure by declaring debt. Ways forward: fix-and-rerun, or re-plan an oracle opt-out via karta-plan.
 - **Snapshot, not log.** Overwrite the report whole each attempt; loop state lives only in the orchestrator.

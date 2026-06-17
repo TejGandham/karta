@@ -38,7 +38,7 @@ The agent reads the binder on disk, dispositions each `oracle.assertions[i]` as 
 - `BLOCKED` — a required input is unreadable.
 - `SPEC-SUSPECT` — the code diverges intentionally and the binder looks stale; halts for human adjudication.
 
-**On DEVIATION:** kick the findings back to karta-build for bounded self-correction and re-dispatch the agent on the corrected diff. Cap: **max 2 attempts total**. On the second attempt still returning DEVIATION, halt with a call to action — no human escalation at this gate. The implementer chooses: fix-and-rerun, or place a declared-debt marker naming the unresolved assertion and re-run.
+**On DEVIATION:** kick the findings back to karta-build for bounded self-correction and re-dispatch the agent on the corrected diff. Cap: **max 2 attempts total**. On the second attempt still returning DEVIATION, halt with a call to action — no human escalation at this gate, and **no self-clear**: the implementer may **not** make the capped failure pass by declaring debt. The capped item takes the halt path (a `failed` ref, not done). The ways forward are fix-and-rerun, or re-plan the unmet assertion as an explicit oracle `opt_out` via karta-plan and re-run (the binder is read-only to build; karta has no backlog).
 
 **On SPEC-SUSPECT:** halt for human adjudication immediately. Do not loop; do not kick back. The binder is amended through karta-plan, never by this gate.
 

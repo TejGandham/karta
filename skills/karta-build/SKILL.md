@@ -182,7 +182,7 @@ Immediately after `cd "$worktree"`, run the mutation guard from [references/work
 
 - Follow the project's structure and convention docs — cite a resolved rules doc if one exists, else apply sensible inline conventions.
 - Implement against the resolved `ITEM_CONTRACT` when present — produce the interface the contract names; do not diverge from it silently.
-- **Declare deferrals inline.** When you skip a test, stub a dependency, or defer an edge case, place a `KARTA-DEFER(<id>)` marker at the exact site per [references/declared-debt.md](references/declared-debt.md). A deferral is recorded, never silent — it surfaces in the final report.
+- **Declare deferrals inline.** When you skip a test, stub a dependency, or defer an edge case, place a `KARTA-DEFER(<id>)` marker at the exact site per [references/declared-debt.md](references/declared-debt.md). A deferral is recorded, never silent — it surfaces in the final report. This inline use is the implementer's call; it is **not** a way to clear the acceptance gate — a capped acceptance failure is never escaped by self-declaring debt (see the acceptance cap in `build:acceptance` and [references/declared-debt.md](references/declared-debt.md)).
 - **Never weaken the oracle.** Do not edit or soften the item's `oracle`/acceptance assertions (or its `contract`) to make a check pass. On a genuine oracle-or-contract conflict — the item cannot be implemented as specified without violating one — **halt with a call to action** rather than silently diverging. Code, specs, and tests win; the implementer does not get to move the goalposts. When a *fresh scaffold* lacks a check the oracle names, that is the absent-check case, not a conflict — provision the named tooling through the framework's own add/plugin command (see Greenfield / scaffold mode above). A check that **exists but fails** is always a real failure, never the absent-check carve-out.
 
 **Conditional UI/data implementation annex (only when the item carries UI fields):**
@@ -295,7 +295,7 @@ The report MUST include a per-file `STATUS: PASS | ISSUES_FOUND` line and a summ
 |-|-|
 | `Issues found: 0` (all files PASS) | Exit loop — validation passed |
 | Issues found, round < 3 | Fix issues in the main thread, re-run lint/test, re-validate |
-| Round 3 reached with residual issues | Stop — surface to the user via `AskUserQuestion` OR host user-input prompt; record the residual as a `KARTA-DEFER` declared-debt marker per [references/declared-debt.md](references/declared-debt.md) |
+| Round 3 reached with residual issues | Stop and **surface to the user** (`AskUserQuestion` OR host user-input prompt) — the worker does not silently self-defer. If the user accepts the residual, it becomes an inline `KARTA-DEFER` marker naming it + an external follow-up (karta has no backlog), per [references/declared-debt.md](references/declared-debt.md) |
 
 **Warnings are acceptable** — only Issues (clear rule violations) trigger fixes. Do not attempt to fix Warnings.
 
@@ -340,7 +340,7 @@ Do not assume Bash, WSL, POSIX background syntax, `/tmp`, `curl`, `grep`, `lsof`
 **Kickback and caps.** On any finding, the gate kicks the work back to this skill for **bounded self-correction**, then re-runs on the corrected diff. Per [references/verification-gate.md](references/verification-gate.md) the caps differ by gate:
 
 - **Safety / boundary scan** (the seven smart-surfaced-review signals re-run on the real diff; see [references/smart-surfaced-review.md](references/smart-surfaced-review.md)) — **max 3 attempts, then escalate to the human.** A boundary the item never justified is a safety question.
-- **Acceptance / contract gate** — **max 2 attempts, then halt with a call to action.** On the second failed attempt, the choice is fix-and-rerun or place a `KARTA-DEFER` declared-debt marker per [references/declared-debt.md](references/declared-debt.md) that records the unmet assertion as a named deferral.
+- **Acceptance / contract gate** — **max 2 attempts, then halt with a call to action.** On the second failed attempt the gate halts and the item takes the halt path — a `failed` ref, no `built`/`done`, not done. You do **not** clear a capped acceptance failure by declaring debt — that would let the implementer grade its own escape. The ways forward are fix-and-rerun, or **re-plan the unmet assertion as an explicit oracle `opt_out` (with a reason) via karta-plan** and re-run (the binder is read-only to build, so accepting it is a plan-time decision; karta has no backlog). See [references/declared-debt.md](references/declared-debt.md).
 
 Only on cap exhaustion does the gate halt or escalate — otherwise it self-corrects within the caps and moves on.
 
@@ -410,7 +410,7 @@ Brief summary to the user (~8 lines):
 - **Runtime** — the active runtime version(s) the floor ran under, against the `runtime_contract` (or detected pin files); note a clean match or the mismatch that halted
 - **Generated-but-unused files** (greenfield/scaffold items only) — anything the framework generator emitted that fell outside the item's `scope`/`contract`, noted here rather than written to the read-only binder
 - **Acceptance result** — which gate ran (`karta-verify` / `karta-validate` / opted out), final disposition, rounds used, any residual finding
-- **Declared-debt summary** — every `KARTA-DEFER` marker placed (what, why, follow-up), per [references/declared-debt.md](references/declared-debt.md); a deferred item is never reported as fully complete without its deferral list
+- **Declared-debt summary** — every `KARTA-DEFER` marker placed (what, why, external follow-up), per [references/declared-debt.md](references/declared-debt.md); markers are inline deferrals only — an item carrying inline debt is never reported as done without its deferral list shown, and a capped acceptance failure is never turned into a marker (it halts to a `failed` ref; accepting the unmet assertion is a re-plan opt-out via karta-plan). karta surfaces the debt register once and never tracks it (no backlog)
 - **Secret-scan status** — clean, or blocked-with-finding
 - A self-assessment from the automated gates, explicitly flagging anything nothing checked (e.g. accessibility) as needing manual review rather than implying it passed
 
@@ -437,7 +437,7 @@ Brief summary to the user (~8 lines):
 - **Data-layer conformance is read-only and isolated.** The data-layer conformance loop (`build:datalayer`) runs a separate read-only subagent/host worker so the implementer doesn't grade its own work; the validator returns a `STATUS` + `Issues found: N` contract the loop parses. It's conditional — no data layer, or no changed file with a data op, skips it. Compute the changed-file set vs the **integration tip**, not the default branch.
 - **The visual gate needs the app up — and the route, not `/`.** Health-poll the actual `design_reference` route (200/307/308, ~60s cap); a 2xx/3xx on a protected route can be the login page, not the view. Honor a provided wave env (`env_contract`/orchestrator) when present; else manage the dev server yourself.
 - **Never stop another process's dev server.** Bring-up bails if a port is already taken; teardown stops only the handle this run recorded (frontend and backend ports), and leaves a wave-bound env alone — the orchestrator owns that one. Teardown runs on every exit path after bring-up.
-- **Declare deferrals inline.** A skipped test or stubbed dependency gets a `KARTA-DEFER` marker at the site; the report surfaces every one. A deferred item is never reported as fully done without its list.
+- **Declare deferrals inline — never to clear a gate.** A skipped test or stubbed dependency gets a `KARTA-DEFER` marker at the site (with an external follow-up; karta has no backlog); the report surfaces every one, and an item carrying inline debt is never reported as done without its list. A marker never clears a capped acceptance failure — that halts to a `failed` ref; accepting the unmet assertion is a re-plan opt-out via karta-plan.
 - **Opt-outs are explicit and surfaced.** When `oracle.opt_out` is set, skip acceptance (not the floor), record the reason, and report it. There is no silent opt-out.
 - **The floor is non-negotiable.** A change that won't compile / type-check / lint does not earn an acceptance review — it earns a surfacing.
 - **Check the runtime before the floor — never auto-provision.** A floor command can hard-refuse on a runtime mismatch. The preflight compares the active runtime against the binder's `runtime_contract` (or detected pin files) and **halts with a CTA** on a mismatch; `on_unavailable` carries the single value `halt`. karta does not install or select a runtime — provisioning is the operator's, a hermeticity/supply-chain concern. The floor/oracle commands may route through the repo's own declared version manager (`mise exec -- …`).

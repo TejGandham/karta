@@ -51,6 +51,8 @@ The wave loop is the core mechanism. Its authoritative description is [reference
 
 **Step 2 — Build concurrently.** Dispatch a `karta-build` per frontier item using the host's parallel primitive. Each item gets its own worktree, branched off the current integration tip. If no parallel primitive is available, build serially in frontier order.
 
+**On resume, partition the frontier by `built` marker first.** A frontier item that already carries `refs/karta/<slug>/item-<id>/built` from a prior partial run (its item branch is committed but was never merged when the run stopped) is **not** re-dispatched to `karta-build` — re-building would trip karta-build's clobber-guard on the existing branch. The orchestrator recovers it straight through the serial merge queue (Step 3): re-validate its oracle against the current integration tip, merge, write `done`. Dispatch a fresh `karta-build` only for frontier items with **no** `built` marker. If a recovered item fails re-validation or conflicts on the moved tip, its built branch is stale — halt with a call to action (or clear its `built` ref so it rebuilds fresh), since `karta-build` cannot be re-dispatched onto the existing branch.
+
 Before dispatching, apply the gates from [references/parallelism-gates.md](references/parallelism-gates.md) to decide what serializes within this wave:
 
 | Gate | Trigger |
