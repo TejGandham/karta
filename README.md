@@ -93,7 +93,7 @@ karta/
     karta-plainlanguage/  SKILL.md                 (bundled writing standard)
 ```
 
-Skills and agents are both auto-discovered: each skill is a directory whose `SKILL.md` carries the frontmatter and workflow (with heavy material in `references/` loaded on demand), and each agent is a markdown file under `agents/` with `name`/`description` frontmatter. The plugin manifests do not enumerate either.
+Each skill is a directory whose `SKILL.md` carries the frontmatter and workflow (with heavy material in `references/` loaded on demand); each agent is a markdown file under `agents/` with `name`/`description` frontmatter. Agents are auto-discovered from `agents/`. Skills are listed explicitly in the Claude marketplace manifest (`.claude-plugin/marketplace.json`, a `strict` plugin entry) and discovered from the `skills/` directory by the Codex manifest — so when you add a skill directory, add it to the marketplace manifest too. `validate_plugin.py` checks that the two stay in sync.
 
 ## Requirements
 

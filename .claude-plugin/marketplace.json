@@ -20,7 +20,8 @@
         "./skills/karta-deliver",
         "./skills/karta-build",
         "./skills/karta-verify",
-        "./skills/karta-validate"
+        "./skills/karta-validate",
+        "./skills/karta-plainlanguage"
       ]
     }
   ]

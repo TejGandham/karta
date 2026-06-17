@@ -8,7 +8,7 @@ Usage:
   uv run scripts/validate_plugin.py --self-test   # check this repo, exit 0/1
 """
 from __future__ import annotations
-import argparse, re, sys
+import argparse, json, re, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -57,6 +57,27 @@ def check() -> list[str]:
         for field in ("name", "description"):
             if not fm.get(field):
                 errors.append(f"agents/{agent.name}: missing frontmatter '{field}'")
+    # Claude marketplace manifest: a plugin that enumerates skills must list exactly
+    # the skill dirs present (a `strict` entry only loads what it lists), so a skill
+    # dir added without a manifest line would silently never register.
+    present = {sd.name for sd in skill_dirs}
+    mp = ROOT / ".claude-plugin" / "marketplace.json"
+    if mp.exists():
+        try:
+            data = json.loads(mp.read_text())
+        except json.JSONDecodeError as e:
+            errors.append(f".claude-plugin/marketplace.json: invalid JSON ({e})")
+            data = {}
+        for plugin in data.get("plugins", []):
+            listed_raw = plugin.get("skills")
+            if not isinstance(listed_raw, list):
+                continue  # directory-form ("./skills/") or absent — nothing to enumerate
+            listed = {Path(s).name for s in listed_raw}
+            pname = plugin.get("name", "?")
+            for name in sorted(present - listed):
+                errors.append(f"marketplace.json: skill '{name}' exists under skills/ but plugin '{pname}' does not list it")
+            for name in sorted(listed - present):
+                errors.append(f"marketplace.json: plugin '{pname}' lists '{name}' but skills/{name}/SKILL.md is missing")
     return errors
 
 
