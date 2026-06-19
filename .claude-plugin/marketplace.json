@@ -21,7 +21,8 @@
         "./skills/karta-build",
         "./skills/karta-verify",
         "./skills/karta-validate",
-        "./skills/karta-plainlanguage"
+        "./skills/karta-plainlanguage",
+        "./skills/karta-doc-gardner"
       ]
     }
   ]

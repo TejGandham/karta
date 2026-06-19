@@ -166,8 +166,13 @@ def _check_codex(errors: list[str], skill_names: set[str]) -> None:
         except tomllib.TOMLDecodeError as e:
             errors.append(f".codex/agents/{toml_path.name}: invalid TOML ({e})")
             continue
-        if data.get("sandbox_mode") != "read-only":
-            errors.append(f".codex/agents/{toml_path.name}: sandbox_mode must be 'read-only'")
+        agent_md = ROOT / "agents" / f"{toml_path.stem}.md"
+        if agent_md.exists():
+            expected = sync_codex_agents.sandbox_mode_for(_frontmatter(agent_md.read_text()))
+            if data.get("sandbox_mode") != expected:
+                errors.append(
+                    f".codex/agents/{toml_path.name}: sandbox_mode "
+                    f"'{data.get('sandbox_mode')}' != derived '{expected}' (from agents/{toml_path.stem}.md tools)")
         for field in ("name", "description", "developer_instructions"):
             if not data.get(field):
                 errors.append(f".codex/agents/{toml_path.name}: missing '{field}'")
@@ -179,6 +184,21 @@ def _check_codex(errors: list[str], skill_names: set[str]) -> None:
             errors.append(f"{name}: missing agents/openai.yaml")
         elif "display_name:" not in yml.read_text():
             errors.append(f"{name}: agents/openai.yaml missing interface.display_name")
+
+    # 6. doc-gardner opt-in config — if a repo commits one, it must be well-formed.
+    dg = ROOT / ".karta" / "doc-gardner.json"
+    if dg.exists():
+        try:
+            cfg = json.loads(dg.read_text())
+        except json.JSONDecodeError as e:
+            errors.append(f".karta/doc-gardner.json: invalid JSON ({e})")
+            cfg = None
+        if isinstance(cfg, dict):
+            if not isinstance(cfg.get("enabled"), bool):
+                errors.append(".karta/doc-gardner.json: 'enabled' must be a boolean")
+            for key in cfg:
+                if key not in ("enabled", "focus"):
+                    errors.append(f".karta/doc-gardner.json: unknown key '{key}' (allowed: enabled, focus)")
 
 
 def main() -> int:

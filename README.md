@@ -67,6 +67,14 @@ karta carries its own writing standard and applies it to everything it shows you
 
 It ships the **`karta-plainlanguage`** skill in the plugin, so karta reads the same way wherever it runs — no dependence on your own setup. The rule and its scope (what counts as user-facing prose, and what stays exact — code, refs, the machine envelope) live in [`skills/_shared/user-facing-prose.md`](skills/_shared/user-facing-prose.md); each skill and gate agent points to it where it talks to you. The full skill is [`skills/karta-plainlanguage/SKILL.md`](skills/karta-plainlanguage/SKILL.md).
 
+## Automatic doc-gardner (opt-in)
+
+Docs rot. Turn on the **doc-gardner** and karta keeps a repo's prose in lockstep with its code automatically. Drop a `.karta/doc-gardner.json` with `{"enabled": true}` (optionally a freeform `"focus"` note) and every `karta-deliver` run ends with a doc-gardner phase: it rewrites any drifted docs (README, `docs/`, `AGENTS.md`, `ARCHITECTURE`) to match the just-delivered code and commits them as one `docs: gardner <slug>` commit on the integration branch.
+
+It is **all or nothing** — opted in, drift is corrected automatically; opted out, it never runs. No advisory tier, no human waive, no halt. Scope is recomputed live every run (the doc surface is re-globbed, the blast radius re-derived from git), so a file added later is never frozen out. The corrections land as a labeled, revertible commit on the branch you already review before merging — that is the review surface.
+
+It ships the **`karta-doc-gardner`** skill and its writer agent — the one karta agent that edits, and only docs. Full guide: [`docs/how-to/doc-gardner.md`](docs/how-to/doc-gardner.md).
+
 ## Cross-cutting
 
 - **Stack-agnostic.** No skill assumes a component library, framework, data layer, branch convention, or repo layout. UI is one stack among many, not the only one — concrete tools in the docs (Next.js, Style Dictionary, `playwright-cli`, `localhost:3000`, …) are **examples**, resolved per project.
@@ -86,7 +94,7 @@ karta/
   .agents/skills/     <skill>/…                        (repo-local Codex skill mirror — generated)
   AGENTS.md           contributor orientation (both runtimes)
   README.md
-  agents/             karta-acceptance-reviewer.md  +  karta-safety-auditor.md   (canonical)
+  agents/             karta-acceptance-reviewer.md  +  karta-safety-auditor.md  +  karta-doc-gardner.md   (canonical)
   skills/
     karta-plan/      SKILL.md  +  agents/openai.yaml  +  references/{binder-reference.md, …}
     karta-deliver/   SKILL.md  +  agents/openai.yaml  +  references/{integration-branch.md, …}
@@ -94,6 +102,7 @@ karta/
     karta-verify/    SKILL.md  +  references/{verification-gate.md, *.agent.md}  (bundled gate instructions)
     karta-validate/  SKILL.md  +  scripts/{serve_design.py, capture_view.py}
     karta-plainlanguage/  SKILL.md                 (bundled writing standard)
+    karta-doc-gardner/    SKILL.md  +  references/{karta-doc-gardner.agent.md, doc-gardner-schema.json}  (opt-in doc correction)
   scripts/            validate_plugin.py + sync_codex_skills.py + sync_codex_agents.py + …
 ```
 
@@ -115,13 +124,13 @@ karta ships as a self-contained Claude Code plugin + marketplace (the `.claude-p
 /plugin install karta@karta
 ```
 
-This registers all six skills, namespaced under the plugin — the five pipeline skills (`karta:karta-plan`, `karta:karta-deliver`, `karta:karta-build`, `karta:karta-verify`, `karta:karta-validate`) plus `karta:karta-plainlanguage` — and the two gate agents. (The plugin and skill names are stable at 1.0 with the `karta-` prefix.)
+This registers all seven skills, namespaced under the plugin — the five pipeline skills (`karta:karta-plan`, `karta:karta-deliver`, `karta:karta-build`, `karta:karta-verify`, `karta:karta-validate`) plus `karta:karta-plainlanguage` and the opt-in `karta:karta-doc-gardner` — and the three agents (two read-only gates plus the doc-gardner writer). (The plugin and skill names are stable at 1.0 with the `karta-` prefix.)
 
 ## Use with Codex CLI
 
 karta ships the same skills to Codex two ways:
 
-- **Plugin** — install from the repo marketplace (`.codex-plugin/plugin.json` + `.agents/plugins/marketplace.json`). Open `/plugins` in Codex, add this repo as a marketplace source, and install karta. All six skills come along; invoke one explicitly with `$karta-plan` (or `@karta`), or let Codex pick it implicitly from your prompt.
+- **Plugin** — install from the repo marketplace (`.codex-plugin/plugin.json` + `.agents/plugins/marketplace.json`). Open `/plugins` in Codex, add this repo as a marketplace source, and install karta. All seven skills come along; invoke one explicitly with `$karta-plan` (or `@karta`), or let Codex pick it implicitly from your prompt.
 - **Clone and run** — run `codex` inside a karta checkout. Codex auto-discovers the skills from the committed `.agents/skills/` mirror (real directories, no symlink, so it works on macOS, Linux, and Windows).
 
 **The gate runs automatically — no setup.** Codex plugins can't register subagents, so on a plugin install `karta-verify` spawns a read-only subagent using the gate instructions bundled inside the skill (`references/*.agent.md`). In a karta checkout, or any project carrying `.codex/agents/*.toml`, the same agents run as registered read-only subagents with sandbox-enforced read-only. Either way you copy nothing. Full details and the one read-only-enforcement nuance are in [docs/how-to/codex.md](docs/how-to/codex.md).

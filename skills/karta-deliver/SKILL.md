@@ -155,7 +155,18 @@ This is education, not a gate. The user may proceed immediately. If they do, sta
 
 ---
 
-## Phase 6 — Report back  `deliver:report`
+## Phase 6 — Doc-gardner (opt-in)  `deliver:docgardner`
+
+After the integration branch is assembled and the wave's lifecycle has resolved, check the doc-gardner switch: read `.karta/doc-gardner.json`.
+
+- **Absent, or `enabled` is false** → opted out. Skip with a one-line note in the report ("doc-gardner: off"). Nothing runs.
+- **`enabled` is true** → opted in, and this phase is **required**: it always runs and cannot be skipped. Invoke the `karta-doc-gardner` skill in `delivery` mode over this run's blast radius (the diff range of everything merged into `karta/<slug>/integration` versus the binder base), passing the `focus` note from the file. The gardner rewrites any drifted docs to match the assembled code, and the skill commits them as one `docs: gardner <slug>` commit on the integration branch.
+
+There is no human decision here and the phase never halts the delivery — the doc-gardner contract is fully automatic (correct, re-verify, record residual, return; see the `karta-doc-gardner` skill). The `docs: gardner` commit is the auditable record on the integration branch.
+
+---
+
+## Phase 7 — Report back  `deliver:report`
 
 Write everything you show a person in plain language — see [references/user-facing-prose.md](references/user-facing-prose.md).
 
@@ -167,6 +178,7 @@ After the final wave (or halt), report:
 - **Items deferred** — their ids and the unmet assertion(s) or divergence each. These are **not done** (no `done` ref), so the run is **incomplete**.
 - **Items halted** — their ids, what caused each halt, and the path to each preserved worktree.
 - **Backlog records** — every accept/defer gap appended to the backlog sink, if one was configured. Each gap appears here once either way.
+- **Doc-gardner** — off, or on with the `docs: gardner <slug>` commit (if any), the number of doc files corrected, and any residual the gardner could not auto-correct (`deliver:docgardner`).
 - **The integration branch** — `karta/<slug>/integration` holds the one assembled result to review. No PR is open. Review this branch and merge it yourself. If any item was deferred, the run is incomplete: the deferred items are not in the result.
 
 ---

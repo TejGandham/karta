@@ -10,9 +10,9 @@ Some files are hand-edited (canonical); others are generated projections you mus
 |-|-|-|
 | `skills/<name>/` | Skills — canonical, Claude-native | yes |
 | `.agents/skills/<name>/` | Codex repo-local skill mirror — generated, byte-identical | no — run `sync_codex_skills.py` |
-| `agents/<name>.md` | Gate agents — canonical (Claude registered subagents) | yes |
-| `.codex/agents/<name>.toml` | Codex registered subagent — generated | no — run `sync_codex_agents.py` |
-| `skills/karta-verify/references/<name>.agent.md` | Gate instructions bundled in the skill (Codex plugin-install fallback) — generated | no — run `sync_codex_agents.py` |
+| `agents/<name>.md` | Agents — canonical (Claude registered subagents). Two read-only gates + the `karta-doc-gardner` writer | yes |
+| `.codex/agents/<name>.toml` | Codex registered subagent — generated. `sandbox_mode` is derived from the agent's `tools` (Write/Edit → workspace-write; else read-only) | no — run `sync_codex_agents.py` |
+| `skills/<spawn-site>/references/<name>.agent.md` | Agent instructions bundled in the agent's sole spawn-site skill (Codex plugin-install fallback) — generated. Gates → `karta-verify`; gardner → `karta-doc-gardner` (see `BUNDLE_SITE` in `sync_codex_agents.py`) | no — run `sync_codex_agents.py` |
 | `skills/_shared/<f>.md` | Shared reference text — canonical | yes |
 | `skills/<name>/references/<f>.md` | Per-skill copy of a `_shared` file | no — keep byte-equal |
 | `.claude-plugin/` | Claude plugin + marketplace manifests | yes |

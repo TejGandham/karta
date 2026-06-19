@@ -22,9 +22,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS = ROOT / "agents"
 CODEX_AGENTS = ROOT / ".codex" / "agents"
-BUNDLE_DIR = ROOT / "skills" / "karta-verify" / "references"  # sole spawn site
 
-SANDBOX_MODE = "read-only"
+# Each agent's sole spawn-site skill. Its instructions are bundled in that skill's
+# references/ so the gate/gardner runs on a Codex plugin install (which cannot
+# register subagents). A new agent without a mapping here is a hard error.
+BUNDLE_SITE = {
+    "karta-acceptance-reviewer": "karta-verify",
+    "karta-safety-auditor": "karta-verify",
+    "karta-doc-gardner": "karta-doc-gardner",
+}
+
+
+def sandbox_mode_for(fm: dict[str, str]) -> str:
+    """Derive the Codex sandbox from the agent's declared tools, never hand-set, so
+    the sandbox always matches the tool surface: a doc-writer (Write/Edit in `tools`)
+    gets workspace-write; a read-only gate gets read-only."""
+    tools = {t.strip() for t in fm.get("tools", "").split(",") if t.strip()}
+    return "workspace-write" if (tools & {"Write", "Edit"}) else "read-only"
 
 
 def parse_agent(text: str) -> tuple[dict[str, str], str]:
@@ -43,14 +57,14 @@ def parse_agent(text: str) -> tuple[dict[str, str], str]:
     return fm, body
 
 
-def render_toml(name: str, description: str, body: str) -> str:
+def render_toml(name: str, description: str, body: str, sandbox: str) -> str:
     if "'''" in body:
         raise ValueError(f"{name}: body contains ''' which breaks a TOML literal string")
     return (
         f"# Generated from agents/{name}.md by scripts/sync_codex_agents.py — do not edit by hand.\n"
         f"name = {json.dumps(name)}\n"
         f"description = {json.dumps(description)}\n"
-        f"sandbox_mode = {json.dumps(SANDBOX_MODE)}\n"
+        f"sandbox_mode = {json.dumps(sandbox)}\n"
         f"developer_instructions = '''\n{body}\n'''\n"
     )
 
@@ -71,8 +85,11 @@ def projections() -> dict[Path, str]:
         description = fm.get("description", "")
         if not description:
             raise SystemExit(f"{src.name}: missing frontmatter 'description'")
-        out[CODEX_AGENTS / f"{name}.toml"] = render_toml(name, description, body)
-        out[BUNDLE_DIR / f"{name}.agent.md"] = render_bundle(body)
+        site = BUNDLE_SITE.get(name)
+        if site is None:
+            raise SystemExit(f"{src.name}: no BUNDLE_SITE mapping for agent '{name}' — add its spawn-site skill")
+        out[CODEX_AGENTS / f"{name}.toml"] = render_toml(name, description, body, sandbox_mode_for(fm))
+        out[ROOT / "skills" / site / "references" / f"{name}.agent.md"] = render_bundle(body)
     return out
 
 
