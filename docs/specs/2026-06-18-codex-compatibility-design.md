@@ -25,7 +25,7 @@ From the OpenAI Codex docs and source (developers.openai.com/codex/{skills,subag
 - **Per-skill metadata (optional).** `<skill-dir>/agents/openai.yaml` sets `interface` (display_name, short_description, icons, brand_color, default_prompt), `policy.allow_implicit_invocation`, and `dependencies.tools`. The loader fails open on a missing or malformed file.
 - **Subagents.** Custom agents are **TOML** files at `.codex/agents/<name>.toml` (project) or `~/.codex/agents/` (personal). Required keys: `name`, `description`, `developer_instructions`. Optional: `model`, `model_reasoning_effort`, `sandbox_mode`, `mcp_servers`, `skills.config`, `nickname_candidates`. A read-only gate is expressed as `sandbox_mode = "read-only"`. Codex also ships built-in read-only agents (`explorer`). **Plugins cannot bundle subagents** — the plugin manifest points only at skills/mcp/apps/hooks. So a *registered* Codex agent must be project-scoped TOML, which does not travel in a plugin install. The skill bundle is the only plugin component that auto-travels on **both** runtimes, so karta ships the gate-agent instructions *inside the dispatching skill* (`karta-verify`) and dispatches adaptively — this makes the gate run automatically on a Codex plugin install with no manual step (§4b, §4d, §6).
 - **Plugin manifest.** `.codex-plugin/plugin.json` with `name`/`version`/`description`, optional metadata, and component pointers (`skills`, `mcpServers`, `apps`, `hooks`) plus an `interface` block. karta's existing file matches this schema.
-- **Repo marketplace.** `$REPO/.agents/plugins/marketplace.json` with top-level `name`, `interface.displayName`, and a `plugins[]` array whose entries carry `name`, `source` (`{source:"local", path:"./"}`), `policy` (`installation`, `authentication`), and `category`. karta's existing file matches this schema.
+- **Repo marketplace.** `$REPO/.agents/plugins/marketplace.json` with top-level `name`, `interface.displayName`, and a `plugins[]` array whose entries carry `name`, `source` (`{source:"local", path:"./plugins/karta"}`), `policy` (`installation`, `authentication`), and `category`. Codex CLI expects plugin entries under a child plugin path, so karta points at a generated real-directory install projection instead of the repo root.
 - **AGENTS.md.** Project instructions Codex reads from repo root down to cwd. Used here to orient contributors working *on* karta.
 
 ## 3. The cross-platform decision: no symlinks, committed real-dir mirror
@@ -46,8 +46,8 @@ Everything else in the design is plain files or `uv` scripts and is cross-platfo
 
 ### 4a. Repo-local skill mirror — `.agents/skills/` + generator
 
-- New `scripts/sync_codex_skills.py` (PEP 723, stdlib-only, `uv run`). Mirrors `skills/<name>/` → `.agents/skills/<name>/` for every dir containing `SKILL.md` (excludes `skills/_shared/`, which has no SKILL.md). It removes mirror entries with no canonical source, then copies every canonical file byte-for-byte (including each skill's `references/`, `scripts/`, and `agents/openai.yaml`). Idempotent. `--check` mode reports drift without writing (used by the validator/CI).
-- New committed tree `.agents/skills/<name>/…` for all six skills (karta-plan, karta-deliver, karta-build, karta-verify, karta-validate, karta-plainlanguage), produced by the generator.
+- New `scripts/sync_codex_skills.py` (PEP 723, stdlib-only, `uv run`). Mirrors `skills/<name>/` → `.agents/skills/<name>/` for repo-local discovery and `skills/<name>/` → `plugins/karta/skills/<name>/` for marketplace installs, for every dir containing `SKILL.md` (excludes `skills/_shared/`, which has no SKILL.md). It also projects `.codex-plugin/` into `plugins/karta/.codex-plugin/`. It removes projection entries with no canonical source, then copies every canonical file byte-for-byte (including each skill's `references/`, `scripts/`, and `agents/openai.yaml`). Idempotent. `--check` mode reports drift without writing (used by the validator/CI).
+- New committed tree `.agents/skills/<name>/…` and `plugins/karta/skills/<name>/…` for all skills, produced by the generator.
 - `.agents/` now holds both `plugins/` (marketplace) and `skills/` (mirror); no collision.
 
 Note: a developer who *both* installs the karta plugin *and* runs Codex inside the karta repo may see each skill twice in selectors (Codex does not de-duplicate by name across sources). This is an accepted edge case, documented in `docs/how-to/codex.md`.
@@ -107,14 +107,15 @@ A short contributor-facing file: one-line "what karta is"; the dual-platform lay
 
 ### 4g. Plugin + marketplace manifest verification
 
-`.codex-plugin/plugin.json` and `.agents/plugins/marketplace.json` already match Codex's schemas; this work adds validator assertions (§4h) rather than rewriting them. The validator pins cross-manifest consistency so they can't silently drift from `.claude-plugin/plugin.json`.
+`.codex-plugin/plugin.json` and `.agents/plugins/marketplace.json` match Codex's schemas; the marketplace entry points at `./plugins/karta` because current Codex CLI does not surface a plugin entry whose source path is the marketplace root (`./`). The validator pins cross-manifest consistency and generated install projection drift so they can't silently diverge.
 
 ### 4h. Validator extension — `scripts/validate_plugin.py`
 
 Add Codex checks to the existing integrity run (still stdlib-only; uses `tomllib`):
 
 - `.codex-plugin/plugin.json`: valid JSON; `name`/`version`/`description` present; `name` and `version` equal `.claude-plugin/plugin.json`; `skills` resolves to an existing dir; required `interface` keys present.
-- `.agents/plugins/marketplace.json`: valid JSON; top-level `name` and `interface.displayName`; each `plugins[]` entry has `name`, `source.{source,path}`, `policy.{installation,authentication}`, `category`; the plugin `name` matches the manifest.
+- `.agents/plugins/marketplace.json`: valid JSON; top-level `name` and `interface.displayName`; each `plugins[]` entry has `name`, `source.{source,path}`, `policy.{installation,authentication}`, `category`; `source.path` is `./plugins/<name>`; the plugin `name` matches the manifest.
+- `plugins/karta/`: generated Codex install projection with `.codex-plugin/plugin.json` and `skills/<name>/` byte-equal to the canonical plugin manifest and skill dirs; no orphan projection files.
 - `.agents/skills/` mirror parity: every `skills/<name>/` (with SKILL.md) has a `.agents/skills/<name>/` whose file set and bytes match exactly; no orphan mirror dirs/files; `_shared/` is not mirrored. (Implemented by calling the generator's `--check`.)
 - `.codex/agents/<name>.toml`: for each `agents/<name>.md`, the TOML parses; `name`/`description` equal the md frontmatter; `developer_instructions` equals the md body; `sandbox_mode == "read-only"`.
 - `skills/karta-verify/references/karta-<name>.agent.md`: present for both gate agents and byte-equal to the corresponding `agents/<name>.md` body (the skill-bundled projection that powers the Codex-plugin-install fallback).
@@ -130,9 +131,11 @@ Add Codex checks to the existing integrity run (still stdlib-only; uses `tomllib
 | Logical artifact | Canonical | Generated projection | Generator | Guard |
 |-|-|-|-|-|
 | Skill content | `skills/<name>/` | `.agents/skills/<name>/` | `sync_codex_skills.py` | validator parity (byte-equal, no orphans) |
+| Codex plugin install content | `.codex-plugin/` + `skills/<name>/` | `plugins/karta/` | `sync_codex_skills.py` | validator parity (byte-equal, no orphans) |
 | Agent → Codex agent | `agents/<name>.md` | `.codex/agents/<name>.toml` | `sync_codex_agents.py` | validator field+body equality |
 | Agent → skill bundle | `agents/<name>.md` body | `skills/karta-verify/references/<name>.agent.md` | `sync_codex_agents.py` | validator body equality |
 | Plugin identity | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` | hand-maintained | validator name/version equality |
+| Marketplace shape | `.claude-plugin/marketplace.json` + `.agents/plugins/marketplace.json` | n/a | hand-maintained | validator keeps Claude root source `./` and Codex child source `./plugins/karta` |
 
 ## 6. The gate runs automatically on every install (no manual step)
 
@@ -152,7 +155,7 @@ No user copies any file. The only cross-install difference is the strength of re
 - `uv run scripts/check_shared_copies.py --self-test` → IN SYNC.
 - `uv run scripts/sync_codex_skills.py --check` and `uv run scripts/sync_codex_agents.py --check` → no drift.
 - TOML files parse under `tomllib`; `openai.yaml` files declare `display_name`.
-- Manual (optional, out of automated scope): in a Codex CLI checkout, `/skills` lists the six karta skills and `$karta-plan` activates one; the two `.codex/agents/*.toml` spawn as read-only subagents.
+- Manual (optional, out of automated scope): in a Codex CLI checkout, `/skills` lists the seven karta skills and `$karta-plan` activates one; the `.codex/agents/*.toml` agents spawn with their generated sandbox modes.
 
 ## 8. Non-goals
 
@@ -163,10 +166,11 @@ No CLAUDE.md changes. The gate's flow, caps, verdicts, inputs, and read-only gua
 Created:
 
 - `scripts/sync_codex_skills.py`, `scripts/sync_codex_agents.py` (the latter emits both agent projections)
-- `.agents/skills/<name>/…` (mirror of all six skills)
+- `.agents/skills/<name>/…` (mirror of all skills)
+- `plugins/karta/…` (Codex marketplace install projection of `.codex-plugin/` and all skills)
 - `.codex/agents/karta-acceptance-reviewer.toml`, `.codex/agents/karta-safety-auditor.toml`
 - `skills/karta-verify/references/karta-acceptance-reviewer.agent.md`, `skills/karta-verify/references/karta-safety-auditor.agent.md` (skill-bundled agent instructions; generated)
-- `skills/<name>/agents/openai.yaml` (six files)
+- `skills/<name>/agents/openai.yaml` (one per skill)
 - `AGENTS.md`
 - `docs/how-to/codex.md`
 

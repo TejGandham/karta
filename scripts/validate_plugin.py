@@ -75,11 +75,13 @@ def check() -> list[str]:
             errors.append(f".claude-plugin/marketplace.json: invalid JSON ({e})")
             data = {}
         for plugin in data.get("plugins", []):
+            pname = plugin.get("name", "?")
+            if plugin.get("source") != "./":
+                errors.append(f".claude-plugin/marketplace.json: plugin '{pname}' source must stay './' for Claude plugin installs")
             listed_raw = plugin.get("skills")
             if not isinstance(listed_raw, list):
                 continue  # directory-form ("./skills/") or absent — nothing to enumerate
             listed = {Path(s).name for s in listed_raw}
-            pname = plugin.get("name", "?")
             for name in sorted(present - listed):
                 errors.append(f"marketplace.json: skill '{name}' exists under skills/ but plugin '{pname}' does not list it")
             for name in sorted(listed - present):
@@ -134,6 +136,17 @@ def _check_codex(errors: list[str], skill_names: set[str]) -> None:
             src = entry.get("source", {})
             if not (src.get("source") and src.get("path")):
                 errors.append(f".agents/plugins/marketplace.json: plugin '{pn}' missing source.source/source.path")
+            expected_path = f"./plugins/{pn}"
+            if src.get("path") != expected_path:
+                errors.append(
+                    f".agents/plugins/marketplace.json: plugin '{pn}' source.path "
+                    f"{src.get('path')!r} != {expected_path!r}")
+            else:
+                plugin_root = ROOT / expected_path
+                if not plugin_root.is_dir():
+                    errors.append(f".agents/plugins/marketplace.json: plugin '{pn}' path '{expected_path}' is missing")
+                elif not (plugin_root / ".codex-plugin" / "plugin.json").exists():
+                    errors.append(f"{plugin_root.relative_to(ROOT)}/.codex-plugin/plugin.json: missing")
             pol = entry.get("policy", {})
             if not (pol.get("installation") and pol.get("authentication")):
                 errors.append(f".agents/plugins/marketplace.json: plugin '{pn}' missing policy.installation/authentication")
@@ -153,6 +166,17 @@ def _check_codex(errors: list[str], skill_names: set[str]) -> None:
         errors.append(f"{p.relative_to(ROOT)}: orphaned in mirror (no canonical source)")
     for name in sorted(sync_codex_skills.mirror_skill_names() - names):
         errors.append(f".agents/skills/{name}: orphaned (no skills/{name})")
+    install_want = sync_codex_skills.expected_install_projection()
+    install_have = set(sync_codex_skills.install_projection_files())
+    for p, content in sorted(install_want.items()):
+        if not p.exists():
+            errors.append(f"{p.relative_to(ROOT)}: missing from Codex install projection (run sync_codex_skills.py)")
+        elif p.read_bytes() != content:
+            errors.append(f"{p.relative_to(ROOT)}: differs from canonical Codex install projection (run sync_codex_skills.py)")
+    for p in sorted(install_have - set(install_want)):
+        errors.append(f"{p.relative_to(ROOT)}: orphaned in Codex install projection (no canonical source)")
+    for name in sorted(sync_codex_skills.install_projection_skill_names() - names):
+        errors.append(f"plugins/karta/skills/{name}: orphaned (no skills/{name})")
 
     # 4. Codex agent projections — TOML + bundled instructions match agents/*.md.
     for p, content in sorted(sync_codex_agents.projections().items()):

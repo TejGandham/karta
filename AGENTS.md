@@ -13,12 +13,13 @@ Some files are hand-edited (canonical); others are generated projections you mus
 | `agents/<name>.md` | Agents — canonical (Claude registered subagents). Two read-only gates + the `karta-doc-gardner` writer | yes |
 | `.codex/agents/<name>.toml` | Codex registered subagent — generated. `sandbox_mode` is derived from the agent's `tools` (Write/Edit → workspace-write; else read-only) | no — run `sync_codex_agents.py` |
 | `skills/<spawn-site>/references/<name>.agent.md` | Agent instructions bundled in the agent's sole spawn-site skill (Codex plugin-install fallback) — generated. Gates → `karta-verify`; gardner → `karta-doc-gardner` (see `BUNDLE_SITE` in `sync_codex_agents.py`) | no — run `sync_codex_agents.py` |
+| `plugins/karta/` | Codex marketplace install projection — generated real directory. The marketplace points here (`./plugins/karta`) because Codex CLI expects plugin entries under a child path, and real files work on Windows/macOS/Linux | no — run `sync_codex_skills.py` |
 | `skills/_shared/<f>.md` | Shared reference text — canonical | yes |
 | `skills/<name>/references/<f>.md` | Per-skill copy of a `_shared` file | no — keep byte-equal |
 | `.claude-plugin/` | Claude plugin + marketplace manifests | yes |
 | `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json` | Codex plugin + repo marketplace manifests | yes (keep name/version in step with `.claude-plugin/plugin.json`) |
 
-Why a committed mirror and not a symlink: Codex does not detect symlinked skills on Windows (openai/codex#8400), so `.agents/skills/` is real directories kept in sync by the generator and guarded by the validator.
+Why committed mirrors and not symlinks: Codex does not detect symlinked skills on Windows (openai/codex#8400), so `.agents/skills/` and the marketplace install projection under `plugins/karta/` are real directories kept in sync by the generator and guarded by the validator.
 
 ## After you edit
 

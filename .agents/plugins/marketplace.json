@@ -8,7 +8,7 @@
       "name": "karta",
       "source": {
         "source": "local",
-        "path": "./"
+        "path": "./plugins/karta"
       },
       "policy": {
         "installation": "AVAILABLE",

@@ -6,17 +6,24 @@ karta runs on Codex CLI with the same skills and gate agents it uses on Claude C
 
 ### As a plugin (any project)
 
-karta is packaged as a Codex plugin (`.codex-plugin/plugin.json`) published through the repo marketplace (`.agents/plugins/marketplace.json`).
+karta is packaged as a Codex plugin published through the repo marketplace (`.agents/plugins/marketplace.json`). The marketplace points at `./plugins/karta`, a generated real-directory install projection of the canonical `.codex-plugin/plugin.json` and `skills/` tree.
 
 1. In Codex, open the plugin browser: `/plugins`.
 2. Add this repository as a marketplace source and install **karta**.
-3. The six skills are available immediately — `karta-plan`, `karta-deliver`, `karta-build`, `karta-verify`, `karta-validate`, and `karta-plainlanguage`.
+3. The seven skills are available immediately — `karta-plan`, `karta-deliver`, `karta-build`, `karta-verify`, `karta-validate`, `karta-plainlanguage`, and `karta-doc-gardner`.
+
+From the CLI, the equivalent commands are:
+
+```bash
+codex plugin marketplace add https://github.com/TejGandham/karta.git
+codex plugin add karta@karta-local
+```
 
 Invoke a skill explicitly with `$karta-plan` (type `$` to mention a skill, or `@karta` to scope to the plugin), or just describe the task and let Codex match a skill by its description.
 
 ### Clone and run (repo-local)
 
-Run `codex` from inside a karta checkout. Codex scans `.agents/skills/` from your working directory up to the repo root and discovers all six skills with no install step. The mirror is committed real directories, so this works the same on macOS, Linux, and Windows.
+Run `codex` from inside a karta checkout. Codex scans `.agents/skills/` from your working directory up to the repo root and discovers all seven skills with no install step. The mirror is committed real directories, so this works the same on macOS, Linux, and Windows.
 
 ## The acceptance gate runs automatically
 
@@ -32,10 +39,10 @@ You never copy a file. The only difference is the strength of read-only enforcem
 ## Notes
 
 - **Reloading.** Codex loads skills and prompts at session start. After installing or updating, restart Codex (or start a new session) to pick up changes.
-- **Windows.** The `.agents/skills/` mirror is real directories, not symlinks — Codex does not detect symlinked skills on Windows ([openai/codex#8400](https://github.com/openai/codex/issues/8400)). Nothing extra is needed on Windows.
+- **Windows.** The `.agents/skills/` mirror and `plugins/karta/` install projection are real directories, not symlinks — Codex does not detect symlinked skills on Windows ([openai/codex#8400](https://github.com/openai/codex/issues/8400)). Nothing extra is needed on Windows.
 - **Duplicate listing.** If you both install the karta plugin and run Codex inside the karta repo, each skill can appear twice in `/skills` (Codex does not de-duplicate by name across sources). Harmless — pick either entry. To avoid it, use one source at a time.
 - **Per-skill metadata.** Each skill carries an `agents/openai.yaml` (display name, short description, implicit-invocation policy) that Codex uses for presentation; it fails open if absent.
 
 ## For contributors
 
-The Codex artifacts (`.agents/skills/`, `.codex/agents/*.toml`, the bundled `*.agent.md`) are **generated** from the canonical `skills/` and `agents/` trees. Never hand-edit them. After editing a skill or agent, run the generators and the validator — see [AGENTS.md](../../AGENTS.md).
+The Codex artifacts (`.agents/skills/`, `plugins/karta/`, `.codex/agents/*.toml`, the bundled `*.agent.md`) are **generated** from the canonical `skills/` and `agents/` trees. Never hand-edit them. After editing a skill or agent, run the generators and the validator — see [AGENTS.md](../../AGENTS.md).

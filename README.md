@@ -92,6 +92,7 @@ karta/
   .codex/agents/      *.toml                           (Codex gate subagents — generated)
   .agents/plugins/    marketplace.json                 (repo-local Codex marketplace)
   .agents/skills/     <skill>/…                        (repo-local Codex skill mirror — generated)
+  plugins/karta/      Codex marketplace install projection — generated real files
   AGENTS.md           contributor orientation (both runtimes)
   README.md
   agents/             karta-acceptance-reviewer.md  +  karta-safety-auditor.md  +  karta-doc-gardner.md   (canonical)
@@ -106,7 +107,7 @@ karta/
   scripts/            validate_plugin.py + sync_codex_skills.py + sync_codex_agents.py + …
 ```
 
-Each skill is a directory whose `SKILL.md` carries the frontmatter and workflow (with heavy material in `references/` loaded on demand); each agent is a markdown file under `agents/` with `name`/`description` frontmatter. Skills are listed explicitly in the Claude marketplace manifest (`.claude-plugin/marketplace.json`, a `strict` plugin entry) and bundled from `skills/` by the Codex manifest. The `skills/` and `agents/` trees are **canonical**; the Codex projections — `.agents/skills/` (a real-directory mirror, since Codex can't follow symlinked skills on Windows) and `.codex/agents/*.toml` plus the bundled `*.agent.md` gate instructions — are **generated** by `sync_codex_skills.py` / `sync_codex_agents.py` and kept byte-identical to their source. `validate_plugin.py` checks every manifest, mirror file, and projection in one pass, so nothing drifts. See `AGENTS.md` for the edit-then-generate workflow.
+Each skill is a directory whose `SKILL.md` carries the frontmatter and workflow (with heavy material in `references/` loaded on demand); each agent is a markdown file under `agents/` with `name`/`description` frontmatter. Skills are listed explicitly in the Claude marketplace manifest (`.claude-plugin/marketplace.json`, a `strict` plugin entry) and bundled from `skills/` by the Codex manifest. The `skills/` and `agents/` trees are **canonical**; the Codex projections — `.agents/skills/` (repo-local discovery), `plugins/karta/` (marketplace install path), and `.codex/agents/*.toml` plus the bundled `*.agent.md` gate instructions — are **generated** by `sync_codex_skills.py` / `sync_codex_agents.py` and kept byte-identical to their source. The two directory projections are real files, not symlinks, so Codex sees them on Windows, macOS, and Linux. `validate_plugin.py` checks every manifest, mirror file, and projection in one pass, so nothing drifts. See `AGENTS.md` for the edit-then-generate workflow.
 
 ## Requirements
 
@@ -130,7 +131,7 @@ This registers all seven skills, namespaced under the plugin — the five pipeli
 
 karta ships the same skills to Codex two ways:
 
-- **Plugin** — install from the repo marketplace (`.codex-plugin/plugin.json` + `.agents/plugins/marketplace.json`). Open `/plugins` in Codex, add this repo as a marketplace source, and install karta. All seven skills come along; invoke one explicitly with `$karta-plan` (or `@karta`), or let Codex pick it implicitly from your prompt.
+- **Plugin** — install from the repo marketplace (`.agents/plugins/marketplace.json`, which points at the generated `plugins/karta` install projection). Open `/plugins` in Codex, add this repo as a marketplace source, and install karta. All seven skills come along; invoke one explicitly with `$karta-plan` (or `@karta`), or let Codex pick it implicitly from your prompt.
 - **Clone and run** — run `codex` inside a karta checkout. Codex auto-discovers the skills from the committed `.agents/skills/` mirror (real directories, no symlink, so it works on macOS, Linux, and Windows).
 
 **The gate runs automatically — no setup.** Codex plugins can't register subagents, so on a plugin install `karta-verify` spawns a read-only subagent using the gate instructions bundled inside the skill (`references/*.agent.md`). In a karta checkout, or any project carrying `.codex/agents/*.toml`, the same agents run as registered read-only subagents with sandbox-enforced read-only. Either way you copy nothing. Full details and the one read-only-enforcement nuance are in [docs/how-to/codex.md](docs/how-to/codex.md).
