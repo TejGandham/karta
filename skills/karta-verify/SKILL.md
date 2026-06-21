@@ -23,7 +23,7 @@ The caller must supply:
 
 Before dispatching either agent:
 
-1. Confirm a fresh, thin context: only the worktree path, the binder path, the work item id, and the diff range travel to each agent. No build-session state.
+1. Confirm a fresh, thin context: only the worktree path, the binder path, the work item id, and the diff range travel to each agent — plus, for the safety-auditor when the binder pins `sme[]`, the resolved SME Review checklists (see `verify:boundary`). No build-session state.
 2. Resolve the **pre-verify env command** bound to this wave: read `env_contract.command` from the binder (see `references/verification-gate.md` and `references/binder-reference.md`). If the oracle's assertions need an environment to run and no env command is present, halt with a clear message naming the missing contract — this is a hard gate.
 3. Check the floor: if the diff cannot clear compile / type-check / lint, do not dispatch the agents. Surface the item for human review and halt. The floor is defined in `references/definition-of-done.md`.
 
@@ -63,7 +63,9 @@ See `references/verification-gate.md`.
 
 Dispatch the **`karta-safety-auditor`** gate (resolved per *Resolving the gate agents* above) with the same inputs: worktree path, binder path, work item id, and diff range.
 
-The agent re-runs the seven smart-surfaced-review signals (see `references/smart-surfaced-review.md`) on the actual diff and returns:
+**Resolve SME checklists first (only when the binder pins `sme[]`).** Read the binder's `sme` list. For each id, resolve the pack — the worktree's project overlay `.karta/sme/<id>.md` laid over this skill's built-in [references/sme/](references/sme/) `<id>.md` (project-local wins) — and extract its **Review checklist** section. Hand those checklists to the auditor in its dispatch brief. This is the one input beyond the four that travels to a gate agent, and only when `sme[]` is non-empty: a project-extensible checklist cannot be embedded in the self-contained agent, and built-in packs live in the plugin rather than the worktree, so the dispatcher resolves them. When `sme[]` is empty or absent, hand nothing and the auditor's SME-norm check no-ops.
+
+The agent re-runs the seven smart-surfaced-review signals (see `references/smart-surfaced-review.md`) on the actual diff — plus, when handed SME checklists, the conditional SME-norm check (an undeclared `KARTA-SME-OVERRIDE` is a VIOLATION) — and returns:
 
 - `PASS` — no undeclared crossings.
 - `VIOLATION` — one or more undeclared boundary crossings.
@@ -99,7 +101,7 @@ This skill is read-only throughout all phases.
 
 - **Floor first.** A change that cannot clear compile / type-check / lint never reaches the agents. See `references/definition-of-done.md`.
 - **Read-only.** This skill never edits code, tests, the binder, or any other file. Neither do the agents. If an edit is needed, it goes back to karta-build.
-- **Fresh session per dispatch.** Each agent dispatch is a new session with no build-session context. Pass only the four inputs; nothing else travels.
+- **Fresh session per dispatch.** Each agent dispatch is a new session with no build-session context. Pass only the four inputs — the one exception is the safety-auditor's SME Review checklists, resolved here and passed only when the binder pins `sme[]`. No build-session state travels.
 - **The agents do the reading.** `karta-acceptance-reviewer` and `karta-safety-auditor` read the diff and the binder directly. This skill does not pre-read those files for them.
 - **Escalate only on exhaustion; this gate never records an accept.** No human review gate fires during delivery except safety-auditor cap exhaustion (3 attempts). The acceptance gate (2 attempts) and a SPEC-SUSPECT halt with a call to action, not a human escalation. A human may accept or defer the halted item, but only at the delivery orchestrator's Phase-4 halt through the host's user-input facility — this read-only gate surfaces the halt and never writes the `accepted` ref.
 - **Caps are per-agent, not shared.** The acceptance cap (2) and the safety cap (3) are independent. Exhausting one does not reset the other.
