@@ -43,7 +43,7 @@ If `.karta/doc-gardner.json` exists, read its `focus` (may be absent). In the au
 
 ## Phase 2 — Dispatch the gardner  `docgardner:correct`
 
-Dispatch `karta-doc-gardner` (resolved as above) with the repo root, the diff range, and the focus note. It re-globs the live doc surface, derives the blast radius from git, runs its repo-wide pointer pass, corrects every drift it finds (bounded re-verify, no human), and returns its envelope. It edits **only** doc-surface files.
+Dispatch `karta-doc-gardner` (resolved as above) with the repo root, the diff range, and the focus note. It re-globs the live doc surface, derives the blast radius from git, runs its repo-wide pointer pass, corrects every drift it finds (bounded re-verify, no human), and returns its envelope. It edits **only** doc-surface files, and writes the prose it corrects in plain language (via the bundled `karta-plainlanguage` skill).
 
 ## Phase 3 — Land or hand back  `docgardner:land`
 

@@ -30,6 +30,10 @@ The gardner is liberal and current-state focused. It fixes three kinds of drift:
 
 It leaves accurate prose, design rationale, and dated archival docs (`docs/specs/YYYY-MM-DD-*`, `docs/design-docs/YYYY-MM-DD-*`) alone. It edits **only** prose docs — never code, tests, the binder, or refs.
 
+## Plain language
+
+The prose the gardner writes follows one standard — karta's bundled `karta-plainlanguage` skill: bottom line first, plain words, one name per thing. It applies this to the doc prose it corrects (README, `docs/`, `AGENTS.md`, `ARCHITECTURE`, and the like) — **prose artifacts only**. It never touches code, HTML, or templates, here or anywhere.
+
 ## Scope is recomputed live (new files are never missed)
 
 Nothing about *what* to garden is stored — the switch is the only static element. Every run, the gardner re-globs the live doc surface (`README*`, `docs/**`, `AGENTS.md`, `CLAUDE.md`, `ARCHITECTURE*`, other top-level markdown) and re-derives the change blast radius from `git`. So:

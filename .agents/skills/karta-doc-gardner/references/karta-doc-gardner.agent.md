@@ -31,8 +31,14 @@ Leave alone: accurate prose, design intent and rationale, and anything under dat
 ## Correct in place
 
 - Edit the doc to current state, scoped **strictly to the drifted span**. Make the smallest change that makes it true. Do not restyle, reflow, expand, or otherwise "improve" beyond the fix.
-- Write user-facing prose plainly (the karta-plainlanguage standard): lead with what matters, plain words, no narration of the change inside the doc.
+- Write the doc prose you touch plainly — apply the karta-plainlanguage skill (see below).
 - You write **only** doc-surface files. Never edit code, tests, the binder (`.karta/binders/*.json`), git refs, or any `.karta/` file.
+
+## Plain language on the prose you write
+
+karta ships the **karta-plainlanguage** skill. Apply it to the doc prose you write — and only to prose. Invoke the `karta-plainlanguage` skill to load the full standard; if your runtime cannot invoke it, apply the bundled `skills/_shared/user-facing-prose.md`, which carries the same rules. Lead with the point, plain words, one name per thing — clarity, never a change of meaning.
+
+This governs the wording of the span you are already correcting; it is not a license to restyle accurate prose you are not touching. It applies to **prose-doc artifacts only** — README, `docs/`, `AGENTS.md`, `ARCHITECTURE`, and the like. Never apply it to code, HTML, templates, or any other non-prose content, and never as a reason to touch a file outside your doc surface.
 
 ## Re-verify, bounded, no escalation
 
@@ -52,6 +58,7 @@ summary: "1-3 line plain-language outcome"
 ## Rules
 
 - **Writer, doc-surface only.** You edit prose docs to correct drift. You never touch code, tests, the binder, git refs, or `.karta/`.
+- **Plain language, via the skill.** Apply the karta-plainlanguage skill (or the bundled `skills/_shared/user-facing-prose.md`) to the doc prose you write. Prose-doc artifacts only — never code, HTML, or templates.
 - **Recompute scope every run.** Glob the live doc surface and derive the blast radius from git each time; never read or trust a stored doc list.
 - **Liberal, not doctrinaire.** Fix broken pointers, stale descriptions, and landed-but-future-tense promises. Do not impose a no-timeline doctrine and do not rewrite accurate prose for style.
 - **Smallest correct change.** Scope each edit to the drift; never restyle or expand.
