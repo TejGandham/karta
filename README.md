@@ -1,10 +1,27 @@
 # karta
 
+<p align="center">
+  <img src="docs/images/mascot.png" alt="karta mascot — a friendly folded map holding a checklist and a compass" width="220">
+</p>
+
+> **karta** — a play on *carta* (map / chart): you hand it the territory, it charts the route and delivers you there.
+
 ## What it is
 
 karta is a **stack-agnostic, ad-hoc orchestration framework** — narrow, unopinionated, repo-directed. You hand it a problem; it synthesizes a **binder** of work items, then delivers that binder in **parallel waves** onto a per-binder integration branch, building each item in its own isolated git worktree and gating each one against its own acceptance check. There is no project setup, no registry, no invariants file, no stored state — karta reads the binder and the repo at runtime and nothing else.
 
 It **grew out of, and still contains, a strong frontend pipeline.** UI is one stack among many here — not the default — but the deep frontend machinery is intact: component-to-library mapping, icon mapping, design-token mapping, DTCG conformance, and a screenshot-driven design-validation loop. On a UI item those steps light up; on a backend, CLI, data, or IaC item they simply don't.
+
+## How it works
+
+The plumbing is five skills, but the idea is simple: you describe the work, karta turns it into a plan, builds every piece at the same time — each in its own isolated space — double-checks each piece against its own acceptance check, and assembles the lot onto one branch.
+
+![How karta works: you describe what you want, karta makes a plan, everything is built at once, each piece is checked, and you get it all assembled](docs/images/how-it-works.png)
+
+| | |
+|-|-|
+| ![Many pieces built side by side, each in its own space, then combined into one finished layout](docs/images/parallel-build.png) | ![Every piece earns its place — checked for behavior and appearance before it ships](docs/images/quality-gate.png) |
+| **Many pieces, built side by side** — each item gets its own isolated worktree, so parallel work never collides; the finished pieces merge at the end. | **Every piece earns its place** — each item is gated against its own oracle (does it *work*, does it *look right*) before it lands. |
 
 ## The pipeline
 
