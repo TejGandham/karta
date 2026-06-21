@@ -2,19 +2,23 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give karta a curated, auto-applied domain-expertise layer — stack-specific "SME packs" of do's/don'ts that shape planning and implementation, with an enforceable per-pack Review checklist gated by the existing safety-auditor.
+**Goal:** Give karta a curated, auto-applied domain-expertise layer. SME packs come in two kinds — **stack packs** (matched by tech: angular, python-fastapi) and **rule packs** (apply to every binder: minimalism, distilled from ponytail's ladder at the "full" level). Each pack's diff-checkable Review checklist is enforced by the existing safety-auditor. v2 also borrows ponytail's debt mechanics (a ceiling/upgrade marker grammar, a no-trigger rot flag, a read-only `karta-debt` harvest skill) and adds a `benchmarks/sme/` method to prove a pack helps.
 
-**Architecture:** SME packs are markdown reference files (built-in under `skills/_shared/sme/`, project overlay under `.karta/sme/`). karta-plan auto-matches them from the resolved stack/deps and pins their ids in the binder's new `sme[]` field. karta-build loads the matched packs to write against and self-checks its diff before commit, recording declared overrides as inline `KARTA-SME-OVERRIDE` markers. karta-verify resolves the pinned packs' Review checklists and passes them to `karta-safety-auditor`, which — only when `sme[]` is non-empty — flags any **undeclared** checklist violation as a boundary VIOLATION. The acceptance-reviewer stays SME-unaware; there is still exactly one acceptance authority.
+**Architecture:** SME packs are markdown reference files (built-in under `skills/_shared/sme/`, project overlay under `.karta/sme/`). A pack is a **stack pack** (`match: [tokens]`) or a **rule pack** (`always: true`). karta-plan applies rule packs to every binder and stack packs by match, then pins all applied ids in the binder's `sme[]` field. karta-build loads the applied packs to write against and self-checks its diff before commit, recording declared overrides as inline `KARTA-SME-OVERRIDE(<pack>: <rule>): <reason> [ceiling: …; upgrade: …]` markers. karta-verify resolves the pinned packs' Review checklists and passes them to `karta-safety-auditor`, which — only when `sme[]` is non-empty — flags any **undeclared** checklist violation as a boundary VIOLATION. The acceptance-reviewer stays SME-unaware; one acceptance authority. ponytail's `platform-native.md` substitution tables ship as a shared reference (`skills/_shared/sme/platform-native.md`) that the minimalism + stack packs link to (reference, don't copy).
 
-**Tech Stack:** Markdown skills/agents (Claude + Codex plugin), small Python 3.11 scripts run via `uv` (`jsonschema`), JSON Schema (Draft 2020-12). No new runtime dependency; no new script.
+**Tech Stack:** Markdown skills/agents (Claude + Codex plugin), small Python 3.11 scripts run via `uv` (`jsonschema`), JSON Schema (Draft 2020-12). New: one read-only skill (`karta-debt`) and a `benchmarks/sme/` runner. The matcher and build self-check remain SKILL.md prose, not new scripts.
 
 ## Global Constraints
 
 - **Spec:** `docs/specs/2026-06-21-sme-domain-experts-design.md` is the source of truth. Read it before starting.
 - **Advisory to write by; only the Review checklist is enforceable.** Do / Don't / Patterns never block. A checklist deviation passes when declared with a rationale (an inline `KARTA-SME-OVERRIDE(<pack>: <rule>): <reason>` marker); an **undeclared** checklist violation is a safety-auditor VIOLATION.
-- **One acceptance authority.** `karta-acceptance-reviewer` stays SME-unaware. SME enforcement is one **conditional** check on `karta-safety-auditor`, active only when the binder's `sme[]` is non-empty. No new gate, no new agent.
-- **No per-stack control flow.** Packs are data; the matcher, self-check, and auditor check are generic. No `case "angular"` anywhere in code or prose.
-- **No new script and no new runtime dependency.** Matching and the build self-check are SKILL.md prose the agent follows. Only existing scripts change (`validate_binder.py`, `check_shared_copies.py`).
+- **One acceptance authority.** `karta-acceptance-reviewer` stays SME-unaware. SME enforcement is one **conditional** check on `karta-safety-auditor`, active only when the binder's `sme[]` is non-empty. No new gate; no new *agent* (the new `karta-debt` skill is read-only and dispatches nothing).
+- **Two pack kinds, one mechanism.** Stack packs carry `match: [tokens]`; rule packs carry `always: true`. They differ only in *selection* — both pin in `sme[]`, both write against the implementer, both are enforced through the Review checklist. The first rule pack is `minimalism` at ponytail's "full" level. **No intensity dial.**
+- **Checklist items must be diff-checkable.** Every `## Review checklist` item (stack or rule) must be objectively checkable on a diff. Heuristics ("prefer the simplest thing", the ladder) stay in Do / Don't / Patterns / advisory sections. This is what lets the minimalism rule pack be enforced without the gate judging a vibe.
+- **No per-stack/per-rule control flow.** Packs are data; the matcher, self-check, and auditor check are generic. No `case "angular"` or `case "minimalism"` anywhere in code or prose.
+- **No tracked backlog.** The rot flag and `karta-debt` are one-shot and read-only. karta still never persists, schedules, or revisits debt.
+- **Attribution.** `platform-native.md` and the `minimalism` pack adapt content from ponytail (MIT). Keep an attribution line in those files' headers.
+- **Matching and the build self-check are SKILL.md prose,** not new scripts. Existing scripts that change: `validate_binder.py`, `check_shared_copies.py`. New code is the `karta-debt` skill (read-only; may carry a small grep helper) and the `benchmarks/sme/` runner.
 - **Token is `sme`.** Built-in packs: `skills/_shared/sme/<id>.md`. Per-consumer byte-equal copies: `skills/{karta-plan,karta-build,karta-verify}/references/sme/<id>.md`. Project overlay: `.karta/sme/<id>.md` (project-local wins on a `name` clash).
 - **Canonical → generated discipline (AGENTS.md).** Edit canonical, then regenerate. Canonical: `skills/<name>/`, `skills/_shared/`, `agents/<name>.md`. Generated (never hand-edit): `.agents/skills/`, `plugins/karta/`, `.codex/agents/*.toml`, `skills/karta-verify/references/*.agent.md`. After editing a gate agent run `uv run scripts/sync_codex_agents.py` **then** `uv run scripts/sync_codex_skills.py`; after editing any skill/reference run `uv run scripts/sync_codex_skills.py`. Each commit must leave all four pre-commit checks green: `uv run scripts/validate_plugin.py --self-test`, `uv run scripts/check_shared_copies.py --self-test`, `uv run scripts/sync_codex_agents.py --check`, `uv run scripts/sync_codex_skills.py --check`.
 - **Markdown rules:** tables use minimum separators (`|-|-|`); never box-drawing characters. Never write the phrase "load bearing" or "fencing".
@@ -25,38 +29,45 @@
 ## File Structure
 
 New canonical files:
-- `skills/_shared/sme/angular.md` — Angular do's/don'ts + Review checklist.
-- `skills/_shared/sme/python-fastapi.md` — Python/Pydantic/FastAPI do's/don'ts + Review checklist.
+- `skills/_shared/sme/angular.md` — stack pack: Angular do's/don'ts + Review checklist (with a native-input item) + `see_also`.
+- `skills/_shared/sme/python-fastapi.md` — stack pack: Python/Pydantic/FastAPI do's/don'ts + Review checklist (with a stdlib item) + `see_also`.
+- `skills/_shared/sme/minimalism.md` — **rule pack** (`always: true`): ponytail "full" ladder (advisory) + safety floor + diff-checkable Review checklist.
+- `skills/_shared/sme/platform-native.md` — shared reference data (not a pack): native/stdlib substitution tables, attributed to ponytail (MIT).
+- `skills/karta-debt/SKILL.md` — **new read-only skill**: on-demand repo-wide harvest of `KARTA-DEFER` + `KARTA-SME-OVERRIDE` markers; grouped, rot-flagged; writes nothing.
+- `benchmarks/sme/README.md`, `benchmarks/sme/fixtures/*`, `benchmarks/sme/run.py` — A/B pack-effectiveness method + semi-automated runner.
 
-New byte-equal copies (one per consumer; kept equal to `_shared` by `check_shared_copies.py`):
-- `skills/karta-plan/references/sme/{angular,python-fastapi}.md`
-- `skills/karta-build/references/sme/{angular,python-fastapi}.md`
-- `skills/karta-verify/references/sme/{angular,python-fastapi}.md`
+New byte-equal copies (kept equal to `_shared` by `check_shared_copies.py`) — every `_shared/sme/*.md` into each of the three consumers:
+- `skills/karta-plan/references/sme/*.md`
+- `skills/karta-build/references/sme/*.md`
+- `skills/karta-verify/references/sme/*.md`
 
 Modified canonical files:
 - `scripts/check_shared_copies.py` — recurse into `_shared` subdirs; path-relative keying.
 - `skills/karta-plan/references/binder-schema.json` — add top-level `sme`.
 - `skills/karta-plan/references/binder-reference.md` — document `sme`.
 - `skills/karta-plan/scripts/validate_binder.py` — self-test cases for `sme`.
-- `skills/karta-plan/SKILL.md` — config row, matcher, domain-guidance, pin, report line.
-- `skills/karta-build/SKILL.md` — config row, cache `SME_PACKS`, load packs, self-check + markers, report.
+- `skills/karta-plan/SKILL.md` — config row, matcher (rule packs always-apply + stack packs by match), domain-guidance, pin, report line.
+- `skills/karta-build/SKILL.md` — config row, cache `SME_PACKS`, load packs, self-check + ceiling/upgrade markers, report tally, no-trigger rot flag in the debt register.
 - `agents/karta-safety-auditor.md` — conditional SME-norm conformance check.
 - `skills/karta-verify/SKILL.md` — resolve checklists, pass into the auditor dispatch.
-- `AGENTS.md`, `README.md` — layout row + SME section.
+- `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json` / `.agents/plugins/marketplace.json` — register the `karta-debt` skill (keep name/version in step).
+- `AGENTS.md`, `README.md` — layout rows + SME section (both pack kinds, minimalism, karta-debt, measurement).
 
 Regenerated (by the sync scripts; commit them, never hand-edit):
 - `.agents/skills/**`, `plugins/karta/**`, `.codex/agents/karta-safety-auditor.toml`, `skills/karta-verify/references/karta-safety-auditor.agent.md`.
 
 ---
 
-### Task 1: Author the two built-in SME packs
+### Task 1: Author the built-in SME packs + shared platform-native reference
 
 **Files:**
-- Create: `skills/_shared/sme/angular.md`
-- Create: `skills/_shared/sme/python-fastapi.md`
+- Create: `skills/_shared/sme/angular.md` (stack pack)
+- Create: `skills/_shared/sme/python-fastapi.md` (stack pack)
+- Create: `skills/_shared/sme/minimalism.md` (rule pack)
+- Create: `skills/_shared/sme/platform-native.md` (shared reference data)
 
 **Interfaces:**
-- Produces: two packs, each with frontmatter `name` (kebab-case, matches the filename stem), `description`, `match` (string array), and a body containing a `## Review checklist` section of `- [ ]` items. Pack `name`s: `angular`, `python-fastapi`. These ids are what later tasks match, pin, load, and enforce.
+- Produces: two **stack packs** (`name`: `angular`, `python-fastapi`; frontmatter `match` + `see_also`), one **rule pack** (`name`: `minimalism`; frontmatter `always: true`), and the shared **`platform-native.md`** reference (no `name`/`match`/`always` — it is data the packs link to). Every pack body has a `## Review checklist` of diff-checkable `- [ ]` items. These ids are what later tasks apply, pin, load, and enforce.
 
 - [ ] **Step 1: Write `skills/_shared/sme/angular.md`**
 
@@ -65,6 +76,7 @@ Regenerated (by the sync scripts; commit them, never hand-edit):
 name: angular
 description: Angular architecture do's and don'ts
 match: ["@angular/core", "@angular/cli", "angular"]
+see_also: ["platform-native#html-elements", "platform-native#css-capabilities"]
 ---
 ## Do
 - Use standalone components, directives, and pipes; avoid declaring them in NgModules.
@@ -92,6 +104,7 @@ match: ["@angular/core", "@angular/cli", "angular"]
 - [ ] No `.subscribe()` without `takeUntilDestroyed()`, an `async` pipe, or an explicit unsubscribe.
 - [ ] New components/directives/pipes are `standalone`, not added to an NgModule's `declarations`.
 - [ ] No business logic embedded in a template expression.
+- [ ] No date/color/range/time-picker dependency where a native `<input type=…>` covers it (see platform-native).
 ```
 
 - [ ] **Step 2: Write `skills/_shared/sme/python-fastapi.md`**
@@ -101,6 +114,7 @@ match: ["@angular/core", "@angular/cli", "angular"]
 name: python-fastapi
 description: Python + Pydantic + FastAPI do's and don'ts
 match: ["fastapi", "pydantic", "python"]
+see_also: ["platform-native#python-standard-library", "platform-native#database"]
 ---
 ## Do
 - Define request and response bodies as Pydantic models; set `response_model` on routes.
@@ -128,19 +142,127 @@ match: ["fastapi", "pydantic", "python"]
 - [ ] No blocking I/O inside an `async def` route.
 - [ ] New config/secrets read through a settings object, not inline `os.environ`.
 - [ ] Changed public functions carry type hints on params and return.
+- [ ] No third-party wrapper for what the stdlib ships (`uuid`, `pathlib`, `zoneinfo`, `datetime.fromisoformat`) — name the stdlib equivalent (see platform-native).
 ```
 
-- [ ] **Step 3: Verify both packs are well-formed**
+- [ ] **Step 2b: Write the `minimalism` rule pack** (`skills/_shared/sme/minimalism.md`)
+
+The ladder is advisory (ponytail "full"); only the Review checklist is enforced, and every item is diff-checkable.
+
+```markdown
+---
+name: minimalism
+description: Write the least code that works; don't over-build (ponytail "full")
+always: true
+see_also: ["platform-native"]
+---
+<!-- Adapted from ponytail (https://github.com/DietrichGebert/ponytail), MIT. -->
+## The ladder (advisory — shapes how you write, never gates)
+Stop at the first rung that holds:
+1. Does this need to exist at all? Speculative need = skip it, say so in one line (YAGNI).
+2. Stdlib does it? Use it.
+3. Native platform feature covers it? Use it (see platform-native).
+4. Already-installed dependency solves it? Use it. Never add a new dependency for what a few lines do.
+5. Can it be one line? One line.
+6. Only then: the minimum code that works.
+
+## Never simplify away (safety floor)
+Validation at trust boundaries, error handling that prevents data loss, security, accessibility basics, anything explicitly requested, and hardware calibration knobs are never on the chopping block. Lazy means less code, not a flimsier algorithm.
+
+## Patterns (advisory)
+- No unrequested abstractions: no interface with one implementation, no factory for one product.
+- Deletion over addition; boring over clever; fewest files; shortest working diff.
+
+## Review checklist (enforced — diff-checkable only)
+- [ ] No new third-party dependency where the stdlib or platform already ships it — name the dep and the native equivalent (see platform-native).
+- [ ] No abstraction with a single implementation/caller added speculatively (interface, factory, wrapper that only delegates).
+- [ ] No new config key, flag, or option that nothing reads.
+- [ ] Non-trivial new logic (a branch, loop, parser, money/security path) leaves one runnable check (an `assert`-based self-check or one small test).
+```
+
+- [ ] **Step 2c: Write the shared `platform-native.md` reference** (`skills/_shared/sme/platform-native.md`)
+
+This is reference data the packs link to (no `name`/`match`/`always`). Adapt ponytail's tables; keep the attribution line. Use `##` section headings whose slugs match the `see_also` anchors (`html-elements`, `css-capabilities`, `python-standard-library`, `database`, plus `javascript-browser-apis`, `nodejs-standard-library`).
+
+```markdown
+# Platform-native solutions
+
+<!-- Adapted from ponytail (https://github.com/DietrichGebert/ponytail), MIT. -->
+
+The lazy senior dev's first question: does the platform already do this? Before adding a dependency, scan here.
+
+## HTML elements
+| You think you need | The platform has |
+|-|-|
+| Date / time / color / range picker library | `<input type="date|time|color|range">` |
+| Modal/dialog library | `<dialog>` + `dialog.showModal()` |
+| Accordion component | `<details><summary>…</summary></details>` |
+| Progress / meter component | `<progress>` / `<meter>` |
+
+## CSS capabilities
+| You reach for JS for | CSS has |
+|-|-|
+| Responsive font size | `font-size: clamp(1rem, 2.5vw, 2rem)` |
+| Dark mode | `@media (prefers-color-scheme: dark)` |
+| Responsive grid without breakpoints | `grid-template-columns: repeat(auto-fill, minmax(250px, 1fr))` |
+| Sticky header | `position: sticky; top: 0` |
+
+## JavaScript / browser APIs
+| You think you need | The runtime ships |
+|-|-|
+| `query-string` / `qs` | `new URLSearchParams(location.search)` |
+| `lodash.clonedeep` | `structuredClone(obj)` |
+| `uuid` v4 | `crypto.randomUUID()` |
+| `date-fns` format | `new Intl.DateTimeFormat(...)` |
+| `clipboard.js` | `navigator.clipboard.writeText(text)` |
+
+## Node.js standard library
+| You think you need | Node has |
+|-|-|
+| `mkdirp` | `fs.mkdirSync(path, { recursive: true })` |
+| `rimraf` | `fs.rmSync(path, { recursive: true, force: true })` |
+| `uuid` v4 | `crypto.randomUUID()` |
+| `array-uniq` | `[...new Set(arr)]` |
+
+## Python standard library
+| You think you need | Python ships |
+|-|-|
+| `python-dateutil` (basic) | `datetime.fromisoformat()` |
+| `pytz` | `zoneinfo.ZoneInfo("America/New_York")` |
+| `attrs` (simple) | `@dataclass` |
+| `uuid` lib confusion | `uuid` is stdlib — just `import uuid` |
+| `click` (single command) | `argparse` |
+
+## Database
+| You think you need app code for | The database has |
+|-|-|
+| Pagination | `LIMIT 20 OFFSET 40` |
+| Uniqueness | `UNIQUE` constraint, not app-level checks |
+| Referential integrity | `FOREIGN KEY`, not app-level checks |
+| Value ranges | `CHECK (price > 0)` |
+| UUID generation | `gen_random_uuid()` (Postgres) |
+
+When the native solution is genuinely insufficient (old browser support, edge cases, ergonomics at scale), the library earns its place. Install it then, not before.
+```
+
+- [ ] **Step 3: Verify the packs + reference are well-formed**
 
 Run:
 ```bash
-for p in angular python-fastapi; do
+# stack + rule packs carry a name and a Review checklist
+for p in angular python-fastapi minimalism; do
   f="skills/_shared/sme/$p.md"
-  grep -q "^name: $p$" "$f" && grep -q "^match:" "$f" && grep -q "^## Review checklist$" "$f" \
-    && grep -qE "^- \[ \] " "$f" && echo "$p OK" || echo "$p MALFORMED"
+  grep -q "^name: $p$" "$f" && grep -q "^## Review checklist" "$f" && grep -qE "^- \[ \] " "$f" \
+    && echo "$p OK" || echo "$p MALFORMED"
 done
+# selection: stack packs match; the rule pack is always:true
+grep -q "^match:" skills/_shared/sme/angular.md \
+  && grep -q "^always: true$" skills/_shared/sme/minimalism.md && echo "selection OK"
+# platform-native is reference data (no selection frontmatter); carries the see_also anchors + attribution
+grep -q "^## HTML elements" skills/_shared/sme/platform-native.md \
+  && grep -qi "ponytail" skills/_shared/sme/platform-native.md && echo "platform-native OK"
 ```
-Expected: `angular OK` and `python-fastapi OK`.
+Expected: `angular OK`, `python-fastapi OK`, `minimalism OK`, `selection OK`, `platform-native OK`.
 
 - [ ] **Step 4: Confirm the pre-commit checks are still green** (`_shared` files are not mirrored and have no copies yet)
 
@@ -151,7 +273,7 @@ Expected: `SHARED COPIES: IN SYNC`
 
 ```bash
 git add skills/_shared/sme/
-git commit -m "feat(sme): add built-in angular and python-fastapi expert packs"
+git commit -m "feat(sme): built-in packs — angular, python-fastapi, minimalism + platform-native ref"
 ```
 
 ---
@@ -175,8 +297,7 @@ This task closes a real gap: the current checker only globs `skills/_shared/*.md
 ```bash
 for skill in karta-plan karta-build karta-verify; do
   mkdir -p "skills/$skill/references/sme"
-  cp skills/_shared/sme/angular.md        "skills/$skill/references/sme/angular.md"
-  cp skills/_shared/sme/python-fastapi.md "skills/$skill/references/sme/python-fastapi.md"
+  cp skills/_shared/sme/*.md "skills/$skill/references/sme/"   # angular, python-fastapi, minimalism, platform-native
 done
 ```
 
@@ -398,11 +519,13 @@ Non-UI stacks skip this annex entirely — the base survey above is all they nee
 
 **SME expert matching (after the survey)  `plan:sme`.** karta ships curated SME packs — advisory do's/don'ts per stack, each with an enforceable Review checklist — and a project may add its own. Once the survey resolves the stack and dependencies, select the packs that apply:
 
-1. Enumerate available packs by `name`: the project overlay `.karta/sme/*.md` in the repo, laid over the built-ins in [references/sme/](references/sme/). On a name clash the project-local file wins.
-2. For each pack, read its frontmatter `match` tokens and test them against the survey's detected dependency names and the resolved stack phrase. A token matches if it equals a detected dependency name or is a case-insensitive substring of the stack phrase.
-3. Collect the matched pack `name`s — this list becomes the binder's `sme`. A polyglot repo matches more than one (e.g. `["python-fastapi", "angular"]`); a repo with no matching pack gets `[]` and SME is silently absent.
+1. Enumerate available packs by `name`: the project overlay `.karta/sme/*.md` in the repo, laid over the built-ins in [references/sme/](references/sme/). On a name clash the project-local file wins. (`platform-native.md` is shared reference data, not a pack — skip it; the packs link to it via `see_also`.)
+2. Select the packs that apply, by frontmatter kind:
+   - A **rule pack** (`always: true`, e.g. `minimalism`) applies to **every** binder, unconditionally.
+   - A **stack pack** (`match: [tokens]`) applies when a token equals a detected dependency name or is a case-insensitive substring of the resolved stack phrase.
+3. Collect the applied pack `name`s — rule and stack together — into the binder's `sme`. Every binder gets at least the rule packs (e.g. `["minimalism"]`); a polyglot repo adds several stack packs (e.g. `["minimalism", "python-fastapi", "angular"]`). A project that wants no rule pack overrides it with a no-op `.karta/sme/<name>.md`.
 
-Load the matched packs now — their guidance feeds synthesis (Phase 2) and their ids are pinned into the binder (Phase 5). These packs are **advisory for decomposition**: they shape how items are split, what each `contract` says, and which `oracle` assertions you choose; they never add a gate at plan time.
+Load the applied packs now — their guidance feeds synthesis (Phase 2) and their ids are pinned into the binder (Phase 5). These packs are **advisory for decomposition**: they shape how items are split, what each `contract` says, and which `oracle` assertions you choose; they never add a gate at plan time.
 
 ---
 
@@ -466,7 +589,7 @@ with:
 
 Run:
 ```bash
-grep -c "plan:sme" skills/karta-plan/SKILL.md          # expect 3
+grep -c "plan:sme" skills/karta-plan/SKILL.md          # expect 4 (matcher header + guidance + populate + review)
 grep -q "SME expert matching" skills/karta-plan/SKILL.md && echo matcher-ok
 grep -q "Experts applied" skills/karta-plan/SKILL.md && echo report-ok
 uv run scripts/sync_codex_skills.py && uv run scripts/sync_codex_skills.py --check
@@ -549,7 +672,7 @@ The integration tip has exactly one writer per [references/integration-branch.md
 **9-sme. SME self-check before commit (when `SME_PACKS` is non-empty).** For each loaded pack (4c-ter), run its **Review checklist** against the item's diff (`git diff "$integration"...HEAD`). For every checklist item, decide pass or miss. Two outcomes for a miss:
 
 - **Fix it** — adjust the code so the checklist item passes. Preferred.
-- **Declare the override** — when the deviation is deliberate and justified, leave the code and record a declared override at the deviation site, modelled on the `KARTA-DEFER` family (see [references/declared-debt.md](references/declared-debt.md)): an inline comment `KARTA-SME-OVERRIDE(<pack>: <checklist-rule>): <one-line rationale>`. A declared override is a justified crossing; the safety-auditor passes it.
+- **Declare the override** — when the deviation is deliberate and justified, leave the code and record a declared override at the deviation site, modelled on the `KARTA-DEFER` family (see [references/declared-debt.md](references/declared-debt.md)): an inline comment `KARTA-SME-OVERRIDE(<pack>: <checklist-rule>): <one-line rationale> [ceiling: <where it breaks>; upgrade: <what forces a revisit>]`. The `ceiling`/`upgrade` trigger is **optional** — name it when the shortcut is knowingly temporary; a permanent justified exception needs only the rationale. A declared override is a justified crossing; the safety-auditor passes it.
 
 Record the per-pack tally for the report (`build:report`), e.g. `SME self-check (angular): 4/4 ok` or `3/4 — 1 declared override`. This self-check **never halts the build** — it produces the markers and the report line. The judgment of declared-vs-undeclared belongs to `karta-safety-auditor` at the gate: an **undeclared** checklist violation is a VIOLATION there (kickback), so leaving a miss neither fixed nor declared will fail the boundary scan. Only Review-checklist items have teeth; Do / Don't / Patterns are advisory.
 
@@ -568,6 +691,14 @@ with:
 - **SME self-check** — per applied pack, the Review-checklist tally and any `KARTA-SME-OVERRIDE` declared (what, which rule, why); plus a note for any pinned `sme` id that resolved to no pack file. Omit the whole line when `SME_PACKS` is empty
 ```
 
+- [ ] **Step 5b: Flag no-trigger deferrals in the debt register (the rot flag)**
+
+The rot flag (borrowed from ponytail-debt) lives in the **existing** debt register — no new system, no backlog. In `skills/karta-build/SKILL.md`, find the `build:report` bullet that begins `- **Declared-debt summary** — every `KARTA-DEFER` marker you placed (what, why, external follow-up), per [references/declared-debt.md](references/declared-debt.md).` and, immediately after that `declared-debt.md` reference, insert this sentence (keep the rest of the bullet unchanged):
+
+```
+ **Flag any `KARTA-DEFER` marker whose `follow-up:` trigger is missing or empty as `no-trigger`** — the deferral that silently rots — and end the register with `<N> markers, <M> no-trigger`. This reads what you already scanned; it adds no state.
+```
+
 - [ ] **Step 6: Verify the insertions and regenerate**
 
 Run:
@@ -575,6 +706,8 @@ Run:
 grep -q "4c-ter" skills/karta-build/SKILL.md && echo load-ok
 grep -q "9-sme" skills/karta-build/SKILL.md && echo selfcheck-ok
 grep -q "KARTA-SME-OVERRIDE" skills/karta-build/SKILL.md && echo marker-ok
+grep -q "ceiling: <where it breaks>" skills/karta-build/SKILL.md && echo ceiling-ok
+grep -q "no-trigger" skills/karta-build/SKILL.md && echo rotflag-ok
 uv run scripts/sync_codex_skills.py && uv run scripts/sync_codex_skills.py --check
 ```
 Expected: `load-ok`, `selfcheck-ok`, `marker-ok`, `CODEX SKILLS PROJECTIONS: IN SYNC`.
@@ -720,7 +853,203 @@ git commit -m "feat(sme): safety-auditor flags undeclared overrides; karta-verif
 
 ---
 
-### Task 7: Docs + full validation pass
+### Task 7: New read-only `karta-debt` harvest skill
+
+**Files:**
+- Create: `skills/karta-debt/SKILL.md`
+- Modify: `.claude-plugin/marketplace.json` (register the skill)
+
+**Interfaces:**
+- Consumes: the `KARTA-DEFER` and `KARTA-SME-OVERRIDE(<pack>: <rule>)` marker families (Tasks 5).
+- Produces: a one-shot, read-only repo-wide ledger of both marker families, grouped by file, flagging `no-trigger` rows. Writes nothing, tracks nothing — consistent with karta's no-backlog rule.
+
+- [ ] **Step 1: Write `skills/karta-debt/SKILL.md`**
+
+```markdown
+---
+name: karta-debt
+description: >-
+  Harvest every KARTA-DEFER and KARTA-SME-OVERRIDE marker in the repo into a one-shot, read-only ledger so deliberate shortcuts and overrides don't rot into "later means never". Groups by file, flags markers with no upgrade trigger. Writes nothing, tracks nothing. Trigger phrases: "karta debt", "list the shortcuts", "what did we defer", "harvest the overrides".
+---
+
+karta-debt collects karta's inline deferral and override markers into one ledger so a deferral can't quietly become permanent. It is **read-only**: it reads and reports, and changes nothing — consistent with karta's no-backlog rule (the ledger is a report handed to you once, not a list karta persists, schedules, or revisits).
+
+## Two marker families
+
+- `KARTA-DEFER(<id>): <what> — <why> — follow-up: <trigger>` — an inline build-time deferral (see karta-build's `references/declared-debt.md`).
+- `KARTA-SME-OVERRIDE(<pack>: <rule>): <rationale> [ceiling: <limit>; upgrade: <trigger>]` — a deliberate deviation from an SME pack's Review checklist (see karta-build, `build:merge`).
+
+## Scan
+
+Grep the repo for both markers, skipping VCS / build / vendor output:
+
+`grep -rnE 'KARTA-DEFER|KARTA-SME-OVERRIDE' . --exclude-dir={.git,node_modules,dist,build,.venv}`
+
+Each hit is one ledger row. The marker prefix keeps prose that merely mentions the convention out of the ledger.
+
+## Output
+
+One row per marker, grouped by file:
+
+`<file>:<line>  <family>  <what>.  trigger: <upgrade / follow-up, or "none">.`
+
+Pull the trigger straight from the marker — `follow-up:` for a `KARTA-DEFER`, `upgrade:` for an override. Flag any marker with no trigger as `no-trigger` — those silently rot. A `KARTA-SME-OVERRIDE` whose rationale states it is a permanent exception is expected; tag it `permanent`, not `no-trigger`.
+
+End with `<N> markers, <M> no-trigger`. Nothing found: `No karta debt markers. Clean ledger.`
+
+## Boundaries
+
+Reads and reports only — changes nothing, persists nothing, schedules nothing. One-shot. If you want it saved, that is your copy to keep; karta does not write or track a ledger file. This skill never edits code, tests, or the binder. Write the report in plain language (the karta-plainlanguage standard).
+```
+
+- [ ] **Step 2: Register the skill in the Claude marketplace manifest**
+
+In `.claude-plugin/marketplace.json`, replace:
+```
+        "./skills/karta-doc-gardner"
+```
+with:
+```
+        "./skills/karta-doc-gardner",
+        "./skills/karta-debt"
+```
+(The Codex projections auto-discover every `skills/*/SKILL.md`, so no Codex-manifest edit is needed — the sync scripts mirror the new skill.)
+
+- [ ] **Step 3: Regenerate projections and verify**
+
+Run:
+```bash
+uv run scripts/sync_codex_skills.py
+uv run scripts/sync_codex_skills.py --check
+uv run scripts/validate_plugin.py --self-test
+test -f .agents/skills/karta-debt/SKILL.md && echo mirror-ok
+```
+Expected: `CODEX SKILLS PROJECTIONS: IN SYNC`, plugin self-test passes, `mirror-ok`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add skills/karta-debt/ .claude-plugin/marketplace.json .agents/ plugins/
+git commit -m "feat(sme): add read-only karta-debt marker-harvest skill"
+```
+
+---
+
+### Task 8: `benchmarks/sme/` — prove a pack helps
+
+A lean A/B method to measure a pack's effect, modelled on ponytail's agentic benchmark, with ponytail-gain's honesty rule: report the A/B delta on a benchmark task, never a per-repo "you saved X" number.
+
+**Files:**
+- Create: `benchmarks/sme/README.md`
+- Create: `benchmarks/sme/fixtures/date-picker.md`
+- Create: `benchmarks/sme/run.py`
+
+**Interfaces:**
+- Consumes: two unified-diff files (one built with the pack pinned, one with `sme: []`).
+- Produces: a printed A/B comparison of added LOC and new dependencies, plus a documented protocol for the gate-pass (safety) axis.
+
+- [ ] **Step 1: Write the runner `benchmarks/sme/run.py`**
+
+```python
+#!/usr/bin/env python3
+"""Measure an SME pack's effect: compare an A (pack applied) vs B (pack absent) diff.
+
+Honesty rule (from ponytail-gain): report the A/B delta on a benchmark task, never a
+per-repo "you saved X" number — the unbuilt version never existed in a live repo.
+
+Usage:
+  python run.py --with a.diff --without b.diff [--label "date-picker"]
+"""
+import argparse, re, sys
+from pathlib import Path
+
+
+def added_lines(diff_text: str) -> int:
+    return sum(1 for ln in diff_text.splitlines()
+               if ln.startswith("+") and not ln.startswith("+++"))
+
+
+def new_deps(diff_text: str) -> int:
+    # crude: added lines that look like a dependency pin in a manifest hunk
+    return sum(1 for ln in diff_text.splitlines()
+               if ln.startswith("+") and re.search(r'"\S+":\s*"\^?\d|==|>=', ln))
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--with", dest="with_", required=True, type=Path)
+    ap.add_argument("--without", required=True, type=Path)
+    ap.add_argument("--label", default="task")
+    a = ap.parse_args()
+    wa, wo = a.with_.read_text(), a.without.read_text()
+    la, lo, da, do = added_lines(wa), added_lines(wo), new_deps(wa), new_deps(wo)
+    print(f"## SME pack A/B — {a.label}")
+    print(f"  added LOC   with pack: {la:>5}   without: {lo:>5}   delta: {la - lo:+}")
+    print(f"  new deps    with pack: {da:>5}   without: {do:>5}   delta: {da - do:+}")
+    print("  (A/B delta on this benchmark task — not a per-repo savings figure)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+- [ ] **Step 2: Write a fixture task `benchmarks/sme/fixtures/date-picker.md`**
+
+```markdown
+# Fixture: date picker
+
+**Task:** Add a date-of-birth field to the signup form that lets the user pick a date.
+
+**Why this fixture:** the classic over-build trap — an agent may install a date-picker library and wrap it, where the platform ships `<input type="date">`. The `minimalism` pack's "no dependency where the platform covers it" checklist item should bite here.
+
+**Run both arms:** build this task once with the binder pinning `minimalism` (and the stack pack), once with `sme: []`. Capture each `git diff` against the integration tip.
+```
+
+- [ ] **Step 3: Write `benchmarks/sme/README.md` (the protocol + honesty rule)**
+
+```markdown
+# SME pack benchmarks
+
+Measure whether an SME pack earns its place: run the same fixture task **with the pack** and **without it**, then compare.
+
+## Protocol (per fixture)
+
+1. Pick a fixture under `fixtures/`.
+2. **Arm A (pack on):** plan + build the fixture with the binder pinning the pack(s). Save the build's `git diff <integration>...HEAD` to `a.diff`.
+3. **Arm B (pack off):** repeat with the binder's `sme: []`. Save to `b.diff`.
+4. Compare: `python run.py --with a.diff --without b.diff --label date-picker`.
+5. **Safety axis:** run the fixture's acceptance gate (`karta-verify`) on both arms and record pass/fail. A pack must not cut correctness to cut code — if Arm A is smaller but fails the gate, the pack lost.
+6. Repeat for a small `n` and report medians.
+
+## Honesty rule (from ponytail-gain)
+
+Report only the **A/B delta on these fixtures**. Never print a per-repo "you saved X lines/tokens here" number: in a live repo the unbuilt version was never written, so there is no real baseline to subtract from. The only honest per-repo figure is the `karta-debt` ledger (a counted list of real markers).
+
+## Automation note
+
+Full push-button automation depends on a headless build path. Today the runner (`run.py`) compares two captured diffs; capturing them is the manual part of the protocol above.
+```
+
+- [ ] **Step 4: Smoke-test the runner**
+
+```bash
+printf '+a\n+b\n+++ x\n' > /tmp/a.diff
+printf '+a\n' > /tmp/b.diff
+python benchmarks/sme/run.py --with /tmp/a.diff --without /tmp/b.diff --label smoke
+```
+Expected: a table showing `added LOC with pack: 2 without: 1 delta: +1` and the honesty-note line. (Here "with pack" is larger only because it's a synthetic input; real fixtures expect the delta negative.)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add benchmarks/sme/
+git commit -m "feat(sme): benchmarks/sme — A/B pack-effectiveness method + runner"
+```
+
+---
+
+### Task 9: Docs + full validation pass
 
 **Files:**
 - Modify: `AGENTS.md` (layout table)
@@ -739,7 +1068,8 @@ In `AGENTS.md`, replace:
 with:
 ```
 | `skills/_shared/<f>.md` | Shared reference text — canonical | yes |
-| `skills/_shared/sme/<id>.md` | Built-in SME expert packs — canonical; copied byte-equal into karta-plan/build/verify `references/sme/` | yes |
+| `skills/_shared/sme/<id>.md` | Built-in SME packs — stack (`match`) + rule (`always: true`); canonical, copied byte-equal into karta-plan/build/verify `references/sme/` | yes |
+| `skills/_shared/sme/platform-native.md` | Shared reference data (ponytail-attributed) the packs link to via `see_also` — not a pack | yes |
 ```
 
 - [ ] **Step 2: Add a short SME section to the README**
@@ -752,9 +1082,16 @@ with:
 ```
 ## Domain experts (SME packs)
 
-karta carries curated **SME packs** — stack-specific do's and don'ts — so planning and implementation follow each stack's norms. At plan time karta auto-matches the packs that fit the repo (from the detected stack and dependencies) and pins their ids in the binder's `sme` field; karta-build loads them to write against. Built-ins ship for `angular` and `python-fastapi`; a project adds or overrides packs by dropping `.karta/sme/<id>.md` in its repo (project-local wins on a name clash).
+karta carries curated **SME packs** so planning and implementation follow good norms. There are two kinds:
 
-Each pack's **Review checklist** is the enforceable part. Before commit the build implementer self-checks its diff against it; a deliberate deviation is declared inline with a `KARTA-SME-OVERRIDE(<pack>: <rule>): <reason>` marker. The existing `karta-safety-auditor` then flags any **undeclared** checklist violation as a boundary crossing the item never justified — a kickback, escalating to you at its cap. A declared override passes and is surfaced in the run report. The acceptance gate stays SME-unaware: there is still exactly one acceptance authority, and Do / Don't / Patterns prose never blocks — only the checklist does.
+- **Stack packs** switch on when your project uses that tech — built-ins ship for `angular` and `python-fastapi`.
+- **Rule packs** apply to every project — the built-in `minimalism` pack distils ponytail's ladder (write the least code that works; reach for the stdlib and the platform before a dependency) at its "full" level.
+
+At plan time karta applies the rule packs plus any stack packs that match the repo, and pins their ids in the binder's `sme` field; karta-build loads them to write against. ponytail's "use the platform" tables ship as a shared `platform-native` reference the packs link to. A project adds or overrides any pack — stack or rule — by dropping `.karta/sme/<id>.md` in its repo (project-local wins on a name clash); a no-op file silences a built-in rule pack.
+
+Each pack's **Review checklist** is the enforceable part (checklist items are diff-checkable; the advisory do's/don'ts and the ladder never block). Before commit the build implementer self-checks its diff; a deliberate deviation is declared inline with a `KARTA-SME-OVERRIDE(<pack>: <rule>): <reason>` marker, optionally naming where the shortcut breaks and what forces a revisit. The existing `karta-safety-auditor` then flags any **undeclared** checklist violation as a boundary crossing the item never justified — a kickback, escalating to you at its cap. A declared override passes and is surfaced in the run report. The acceptance gate stays SME-unaware: exactly one acceptance authority.
+
+Two companions: **`/karta-debt`** harvests every deferral and override marker across the repo into a one-shot, read-only ledger (it flags any shortcut with no upgrade trigger, and writes nothing — karta keeps no backlog), and **`benchmarks/sme/`** is an A/B method to check a pack actually helps (same task with and without the pack: less code, gate still green), reporting only benchmark deltas, never an invented per-repo savings figure.
 
 ## Cross-cutting
 ```
@@ -777,7 +1114,7 @@ Expected: `IN SYNC`, `IN SYNC`, `SHARED COPIES: IN SYNC`, plugin self-test passe
 cat > /tmp/sme-smoke.json <<'JSON'
 { "slug": "sme-smoke", "motivation": "smoke", "scope": { "included": ["x"] },
   "design_facts": { "stack": "Python/FastAPI + Angular SPA" },
-  "sme": ["python-fastapi", "angular"],
+  "sme": ["minimalism", "python-fastapi", "angular"],
   "env_contract": { "command": "uv run uvicorn app:app", "supports_isolation": true },
   "work_items": [ { "id": "wi01", "title": "Endpoint", "oracle": { "type": "unit" } } ] }
 JSON
@@ -798,25 +1135,27 @@ git commit -m "docs(sme): document SME packs in README and AGENTS layout"
 git log --oneline main..HEAD
 git diff --stat main..HEAD
 ```
-Expected: the seven feature commits (Tasks 1-7) plus the spec commits, touching only the files named in this plan and their regenerated projections.
+Expected: the nine feature commits (Tasks 1-9) plus the spec commits, touching only the files named in this plan and their regenerated projections.
 
 ---
 
 ## Self-Review
 
-**Spec coverage:**
-- Pack format + built-ins (spec 3a, 3b) → Task 1.
-- Project overlay + byte-equal copies + nested drift check (spec 3b, 4) → Task 2.
+**Spec coverage (v2):**
+- Pack format + built-ins, incl. the `minimalism` rule pack and the shared `platform-native` reference (spec 3a, 3b, 3g) → Task 1.
+- Project overlay + byte-equal copies (all `_shared/sme/*.md`) + nested drift check (spec 3b, 4) → Task 2.
 - `sme` field, schema, validator (spec 3c, 3f, 4) → Task 3.
-- Plan match + guidance + pin + report (spec 3c, 3d) → Task 4.
-- Build load + self-check + declared-override markers + report (spec 3e) → Task 5.
+- Plan match (rule packs always-apply + stack packs by match) + guidance + pin + report (spec 3c, 3d) → Task 4.
+- Build load + self-check + override markers with optional ceiling/upgrade + no-trigger rot flag in the debt register (spec 3e, 3h) → Task 5.
 - Safety-auditor conditional enforcement + karta-verify checklist resolution (spec 3f) → Task 6.
-- Wiring/docs (spec 4) → Tasks 2-7 (regeneration folded into each touching task; docs in Task 7).
-- Non-goals (spec 5): no new script (matcher/self-check are prose ✓), no new gate authority (auditor conditional, acceptance-reviewer untouched ✓), no kill switch (empty `sme[]` no-ops ✓), no per-item override (binder-level only ✓).
+- `karta-debt` read-only harvest skill (spec 3h) → Task 7.
+- `benchmarks/sme/` A/B method + runner + honesty rule (spec 3i) → Task 8.
+- Wiring/docs (spec 4) → regeneration folded into each touching task; docs in Task 9.
+- Non-goals (spec 5): no new gate authority (auditor conditional, acceptance-reviewer untouched ✓), checklist items diff-checkable so the rule pack is enforceable without judging a vibe ✓, no intensity dial ✓, no tracked backlog (rot flag + karta-debt are read-only/one-shot ✓), no per-item override ✓.
 
 **Placeholder scan:** every code step shows full content; every command shows expected output. No TBD/TODO.
 
-**Type/name consistency:** field `sme` (array of kebab-case strings); pack ids `angular`, `python-fastapi`; cache var `SME_PACKS`; phase label `plan:sme`; build steps `4c-ter` / `9-sme`; marker `KARTA-SME-OVERRIDE(<pack>: <rule>): <reason>` — used identically across Tasks 3-7. The auditor receives checklists as a conditional 4th input; karta-verify is the sole resolver/dispatcher.
+**Type/name consistency:** field `sme` (array of kebab-case strings, holds stack + rule pack ids); pack ids `angular`, `python-fastapi`, `minimalism`; selection `match` (stack) vs `always: true` (rule); shared reference `platform-native.md`; cache var `SME_PACKS`; phase label `plan:sme`; build steps `4c-ter` / `9-sme`; marker `KARTA-SME-OVERRIDE(<pack>: <rule>): <reason> [ceiling: …; upgrade: …]` — used identically across Tasks 3-9. The auditor receives checklists as a conditional 4th input; karta-verify is the sole resolver/dispatcher; `karta-debt` dispatches nothing.
 
 ## Execution Handoff
 
