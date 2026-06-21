@@ -38,6 +38,7 @@ Resolve in order: **explicit user input → detect from the repo → ask the use
 | **Repo direction docs** | Architecture docs, ADRs, or decision records | Detect: `ARCHITECTURE.md`, `docs/architecture/`, `docs/decisions/`, `adr/`; cite only filled docs (skip placeholder templates); ask when context is thin |
 | **Project rules** | Conventions the repo documents (lint configs, contributor guides, rules files) | Detect; verify the doc has real content before citing |
 | **Repo policy** | CI/branch/deployment policy (only when in planning scope) | Read root/area `AGENTS.md`, workflows, and CI docs; load [references/ci-policy.md](references/ci-policy.md) and [references/policy-yagni.md](references/policy-yagni.md) |
+| **SME packs** | Advisory domain-expert do's/don'ts to apply (each with an enforceable Review checklist) | Match the built-in [references/sme/](references/sme/) plus the project overlay `.karta/sme/*.md` against the detected deps/stack; record matched ids in the binder's `sme` |
 
 Resolved values feed the binder's `design_facts.stack`, `env_contract`, `runtime_contract`, and each oracle's `command`. Record them — every later phase references them.
 
@@ -98,6 +99,16 @@ When the token system is W3C DTCG (JSON leaves carrying `$value`/`$type`), also 
 
 Non-UI stacks skip this annex entirely — the base survey above is all they need.
 
+**SME expert matching (after the survey)  `plan:sme`.** karta ships curated SME packs — advisory do's/don'ts per stack, each with an enforceable Review checklist — and a project may add its own. Once the survey resolves the stack and dependencies, select the packs that apply:
+
+1. Enumerate available packs by `name`: the project overlay `.karta/sme/*.md` in the repo, laid over the built-ins in [references/sme/](references/sme/). On a name clash the project-local file wins. (`platform-native.md` is shared reference data, not a pack — skip it; the packs link to it via `see_also`.)
+2. Select the packs that apply, by frontmatter kind:
+   - A **rule pack** (`always: true`, e.g. `minimalism`) applies to **every** binder, unconditionally.
+   - A **stack pack** (`match: [tokens]`) applies when a token equals a detected dependency name or is a case-insensitive substring of the resolved stack phrase.
+3. Collect the applied pack `name`s — rule and stack together — into the binder's `sme`. Every binder gets at least the rule packs (e.g. `["minimalism"]`); a polyglot repo adds several stack packs (e.g. `["minimalism", "python-fastapi", "angular"]`). A project that wants no rule pack overrides it with a no-op `.karta/sme/<name>.md`.
+
+Load the applied packs now — their guidance feeds synthesis (Phase 2) and their ids are pinned into the binder (Phase 5). These packs are **advisory for decomposition**: they shape how items are split, what each `contract` says, and which `oracle` assertions you choose; they never add a gate at plan time.
+
 ---
 
 ### Phase 2 — Synthesize the binder (synthesis subagent; main thread owns judgment)  `plan:synthesize`
@@ -108,6 +119,8 @@ Decompose the stated intent into work items. Do not delegate this judgment — t
 
 Given the intent `<intent>` and the repo survey (`plan:survey`), draft a binder JSON that conforms to [references/binder-reference.md](references/binder-reference.md).
 
+**Domain guidance (when SME packs matched in `plan:sme`).** When one or more SME packs matched, their do's/don'ts are domain guidance for this synthesis. Decompose items, write `contract`s, and choose `oracle` assertions so they respect each matched stack's patterns and avoid its anti-patterns (e.g. an Angular slice's `contract` speaks in standalone-component / signals terms; a FastAPI item's `oracle` expects Pydantic-validated request/response shapes). This guidance shapes the plan; it never adds a plan-time gate.
+
 For the binder level, populate:
 - `slug` (kebab-case, derived from the feature name)
 - `motivation` (one sentence)
@@ -116,6 +129,7 @@ For the binder level, populate:
 - `env_contract.command`, `env_contract.supports_isolation`, and `env_contract.isolation_params` (from `plan:survey`)
 - `runtime_contract` when the project pins a runtime floor: one `runtimes` entry per runtime (`name`, the required `version`/range, and an optional `manager` — the version manager that pins it, e.g. `nvm`/`mise`), plus `on_unavailable` (always `halt` — karta never auto-provisions or selects a runtime). Detect the floor from version-manager pin files and manifest fields (`engines`, `requires-python`), then record the resolved `version`; omit the whole object when no runtime floor exists
 - `token_manifest` only when the stack has a token system
+- `sme` — the SME pack ids matched in `plan:sme`; omit or use `[]` when none matched
 
 For each work item, set:
 - `id` (kebab-case, unique)
@@ -159,6 +173,7 @@ After the subagent returns, review the draft. Check:
 - Oracle assertions trace to the item's contract.
 - `serialize`/`shared_resources` are set for any items that write shared state (migrations, lock files, config that multiple items touch).
 - UI fields are present only on items with a UI surface.
+- `sme` lists the packs matched in `plan:sme` (or is absent / `[]` when none matched).
 
 Fix gaps in the main thread before proceeding.
 
@@ -214,6 +229,7 @@ Lead with the binder path and the total work-item count, then give the user:
 - **Flagged for review** — the IDs and the signals that flagged each one.
 - **Opted-out items** — the IDs and their recorded reasons (from the validator's opt-out summary).
 - **First wave** — the items with no `depends_on`. These can start right away.
+- **Experts applied** — the `sme` packs in effect for this binder (or *none*).
 
 ---
 
