@@ -4,28 +4,30 @@
   <img src="docs/images/web/mascot.png" alt="karta mascot — a paper plane folded from a map, charting a route to a star" width="220">
 </p>
 
-> **karta** — a play on *carta* (map / chart): you hand it the territory, it charts the route and delivers you there.
+> **karta** — a play on *carta* (map/chart): you hand it the territory, it charts the route and delivers you there.
 
 ## What it is
 
-karta is a **stack-agnostic, ad-hoc orchestration framework** — narrow, unopinionated, repo-directed. You hand it a problem; it synthesizes a **binder** of work items, then delivers that binder in **parallel waves** onto a per-binder integration branch, building each item in its own isolated git worktree and gating each one against its own acceptance check. There is no project setup, no registry, no invariants file, no stored state — karta reads the binder and the repo at runtime and nothing else.
+karta turns a problem into a plan — a **binder** of work items — then builds every item in parallel and merges them onto one branch. Each item builds in its own git worktree and must pass its own acceptance check before it lands.
 
-It **grew out of, and still contains, a strong frontend pipeline.** UI is one stack among many here — not the default — but the deep frontend machinery is intact: component-to-library mapping, icon mapping, design-token mapping, DTCG conformance, and a screenshot-driven design-validation loop. On a UI item those steps light up; on a backend, CLI, data, or IaC item they simply don't.
+It works on any stack — frontend, backend, CLI, data, IaC — and needs no setup: no config, no registry, no stored state. karta reads two things at runtime: the binder and your repo.
+
+It began as a frontend tool and keeps deep frontend support — component, icon, and design-token mapping, DTCG conformance, and a screenshot-based design check. Those steps fire on UI work and stay quiet on everything else.
 
 ## How it works
 
-The plumbing is five skills, but the idea is simple: you describe the work, karta turns it into a plan, builds every piece at the same time — each in its own isolated space — double-checks each piece against its own acceptance check, and assembles the lot onto one branch.
+Five skills do the work, but the flow is simple: you describe the job, karta plans it, builds every piece at once (each in its own space), checks each piece against its own test, and merges the lot onto one branch.
 
 ![How karta works: you describe what you want, karta makes a plan, everything is built at once, each piece is checked, and you get it all assembled](docs/images/web/how-it-works.png)
 
 | | |
 |-|-|
 | ![Many pieces built side by side, each in its own space, then combined into one finished layout](docs/images/web/parallel-build.png) | ![Every piece earns its place — checked for behavior and appearance before it ships](docs/images/web/quality-gate.png) |
-| **Many pieces, built side by side** — each item gets its own isolated worktree, so parallel work never collides; the finished pieces merge at the end. | **Every piece earns its place** — each item is gated against its own oracle (does it *work*, does it *look right*) before it lands. |
+| **Many pieces, built side by side** — each item gets its own git worktree, so parallel work never collides. The finished pieces merge at the end. | **Every piece earns its place** — each item must clear its own gate (does it *work*, does it *look right*) before it lands. |
 
 ## The pipeline
 
-`plan → deliver → build`, with `verify` (behavioral) and `validate` (visual) as the **read-only acceptance gates**, and two read-only agents as the gate workers.
+`plan → deliver → build`, gated by `verify` (behavioral) and `validate` (visual). Both gates are read-only.
 
 ```mermaid
 flowchart LR
@@ -41,64 +43,50 @@ flowchart LR
   BUILD --> INT[(integration branch)]
 ```
 
-Default is parallel; karta drops to serial only where correctness or collision demands it. The single-item escape hatch is `karta-build` on its own. Resume is git-native — the integration branch *is* the record, so a later run picks up where a partial one stopped.
+karta runs items in parallel and goes serial only when two would collide. Need just one item? Run `karta-build` alone. Resume is git-native: the integration branch *is* the record, so a re-run picks up where it stopped.
 
 ## The binder
 
-The **binder** is karta's spine: one JSON artifact (`.karta/binders/<slug>.json`) that drives planning, build, and integration end to end. Every skill reads it; none of them write to it during a build run. It is immutable while a wave runs. It carries the slug (which names the integration branch and wave tags), scope, the env contract, optional design facts and token manifest, and an ordered list of work items — each with its dependencies, optional `contract`, optional `shared_resources`/`serialize` flags, and an `oracle` (its acceptance check). The shape is karta's own. `validate_binder.py` gates every binder before a run (schema, dependency cycles, dangling references, opt-out summary).
+The **binder** is one JSON file (`.karta/binders/<slug>.json`) that drives planning, build, and integration. Every skill reads it; none writes to it during a run, and it can't change while a wave runs.
 
-The binder is the cross-skill contract — it **replaces the old ticket contract**. Full field guide: [`skills/karta-plan/references/binder-reference.md`](skills/karta-plan/references/binder-reference.md).
+It holds the slug (which names the integration branch and tags), scope, the env contract, optional design facts and token manifest, and an ordered list of work items. Each item carries its dependencies, an optional `contract`, optional `shared_resources`/`serialize` flags, and an `oracle` — its acceptance check.
+
+`validate_binder.py` checks every binder before a run: schema, dependency cycles, dangling references, opt-outs. Full field guide: [`skills/karta-plan/references/binder-reference.md`](skills/karta-plan/references/binder-reference.md).
 
 ## The five skills
 
-### karta-plan
-
-Ingests a problem or feature description (optionally a design mock or non-functional prototype) and — without fail — **synthesizes a validated binder of work items**. It asks a minimal set of questions, runs a synthesis subagent to draft the binder, and commits on an explicit "commit" verb. It is stack-agnostic: it plans frontend, backend, CLI, data, library/SDK, IaC, mobile, ML, and docs work the same way. On a UI surface it keeps the **full frontend depth** — component/icon/token mapping and DTCG-aware token planning — emitted as the conditional UI fields on the relevant work items.
-
-### karta-deliver
-
-Takes a **validated binder** and builds all its work items onto the per-binder integration branch in **parallel waves**, serializing only where running two items together would produce a wrong or broken result. It reads the binder, never writes it. The output is a single assembled integration branch you review and merge — no PR, no push. The integration branch is also the resume record: karta tracks every item through commit markers, wave tags, and the `refs/karta/` namespace, so a later run detects leftovers and offers to continue or clear.
-
-### karta-build
-
-Carries **one work item** from pickup to a tagged set of commits merged into the binder's integration branch, all inside an isolated git worktree. Stack-agnostic — the same flow implements a frontend view, a backend endpoint, a CLI command, a data migration, or an IaC change — it resolves a small set of project settings up front (detect → ask), then implements against whatever it finds. It runs the project's lint/test/build plus the item's `oracle`, dispatches the gate, and merges. On a UI item it keeps the **full frontend path**: component/icon/token implementation, DTCG token conformance (Phase 5), data-layer conformance, and the design-validation loop. It does **not** open a PR; it is also the single-item escape hatch.
-
-### karta-verify
-
-The thin orchestrator for the **behavioral acceptance gate** — for oracle types `unit` / `integration` / `e2e` / `smoke`. It runs read-only in a fresh session against the actual diff, dispatches the two gate agents, aggregates their verdicts, and drives the kickback-to-build and human-escalation loop. It never edits code, tests, or the binder. Visual oracles are not its concern (those go to `karta-validate`); opt-out oracles bypass it entirely.
-
-### karta-validate
-
-karta's **visual acceptance gate** — the gate for oracle `type: visual` items. It compares a single running frontend view against its design prototype (Claude Design or runtime-JSX export), opening both the live app and the served design through bundled `uv`-run capture scripts, capturing screenshots and DOM snapshots, then reporting structured discrepancies across layout, color, typography, spacing, component structure, and visual hierarchy. It is read-only: it reports kickback input for `karta-build` to self-correct and never fixes anything itself. One view per invocation — the calling pipeline loops.
+| Skill | What it does |
+|-|-|
+| **`karta-plan`** | Turns a problem (and optional design mock) into a validated binder. Asks a few questions, drafts the plan, commits when you say so. Same flow for every stack; keeps full frontend depth (component/icon/token mapping) on UI items. |
+| **`karta-deliver`** | Builds all the binder's items onto one integration branch in parallel waves, going serial only where needed. Reads the binder, never writes it. No PR, no push — you review and merge. The branch is also the resume record. |
+| **`karta-build`** | Builds one item end to end in an isolated worktree: implements, runs your lint/test/build plus the item's `oracle`, clears the gate, and merges. Keeps the full frontend path on UI items. Also the single-item escape hatch. |
+| **`karta-verify`** | The behavioral gate (`unit`/`integration`/`e2e`/`smoke`). Runs read-only against the diff, dispatches the two gate agents, and drives kickbacks to build. Never edits code, tests, or the binder. |
+| **`karta-validate`** | The visual gate (`type: visual`). Compares a running view against its design prototype — screenshots and DOM — and reports differences in layout, color, type, spacing, and structure. Read-only; one view per call. |
 
 ## The two agents
 
-Both are **read-only verification gates** dispatched by `karta-verify` (and, for the behavioral floor, by `karta-build`):
+Both run read-only, dispatched by `karta-verify` (and by `karta-build` for the behavioral floor):
 
-- **`karta-acceptance-reviewer`** — judges the diff against the work item's `oracle`/`contract` assertion by assertion: verdict `CONFORMANT | DEVIATION | BLOCKED | SPEC-SUSPECT`.
-- **`karta-safety-auditor`** — re-runs the seven smart-surfaced-review signals against the real diff and flags any sensitive, destructive, or contract crossing the item never justified: verdict `PASS | VIOLATION`.
+- **`karta-acceptance-reviewer`** — checks the diff against the item's `oracle`/`contract`, assertion by assertion. Verdict: `CONFORMANT | DEVIATION | BLOCKED | SPEC-SUSPECT`.
+- **`karta-safety-auditor`** — re-runs the seven review signals on the real diff, flagging anything sensitive, destructive, or outside the item's contract. Verdict: `PASS | VIOLATION`.
 
 ## Plain language, built in
 
-karta carries its own writing standard and applies it to everything it shows you — run reports, halt calls-to-action, the accept/defer prompt, plan and opt-out summaries. The aim is plain: read it once and act, no rereading.
-
-It ships the **`karta-plainlanguage`** skill in the plugin, so karta reads the same way wherever it runs — no dependence on your own setup. The rule and its scope (what counts as user-facing prose, and what stays exact — code, refs, the machine envelope) live in [`skills/_shared/user-facing-prose.md`](skills/_shared/user-facing-prose.md); each skill and gate agent points to it where it talks to you. The full skill is [`skills/karta-plainlanguage/SKILL.md`](skills/karta-plainlanguage/SKILL.md).
+karta writes everything it shows you — run reports, prompts, summaries — to one standard: read it once and act. The **`karta-plainlanguage`** skill ships in the plugin, so karta reads the same everywhere, whatever your own setup. The rule and what stays exact (code, refs, the machine envelope) live in [`skills/_shared/user-facing-prose.md`](skills/_shared/user-facing-prose.md); the full skill is [`skills/karta-plainlanguage/SKILL.md`](skills/karta-plainlanguage/SKILL.md).
 
 ## Automatic doc-gardner (opt-in)
 
-Docs rot. Turn on the **doc-gardner** and karta keeps a repo's prose in lockstep with its code automatically. Drop a `.karta/doc-gardner.json` with `{"enabled": true}` (optionally a freeform `"focus"` note) and every `karta-deliver` run ends with a doc-gardner phase: it rewrites any drifted docs (README, `docs/`, `AGENTS.md`, `ARCHITECTURE`) to match the just-delivered code and commits them as one `docs: gardner <slug>` commit on the integration branch.
+Docs rot. Turn on **doc-gardner** and karta keeps your prose in sync with your code. Add `.karta/doc-gardner.json` with `{"enabled": true}` (and an optional `"focus"` note); every `karta-deliver` run then ends by rewriting any drifted docs — README, `docs/`, `AGENTS.md`, `ARCHITECTURE` — to match the delivered code, as one `docs: gardner <slug>` commit.
 
-It is **all or nothing** — opted in, drift is corrected automatically; opted out, it never runs. No advisory tier, no human waive, no halt. Scope is recomputed live every run (the doc surface is re-globbed, the blast radius re-derived from git), so a file added later is never frozen out. The corrections land as a labeled, revertible commit on the branch you already review before merging — that is the review surface.
-
-It ships the **`karta-doc-gardner`** skill and its writer agent — the one karta agent that edits, and only docs. Full guide: [`docs/how-to/doc-gardner.md`](docs/how-to/doc-gardner.md).
+It's all or nothing: on, drift is fixed automatically; off, it never runs. Scope is recomputed each run, so a file added later is never missed. The fix lands as a labeled, revertible commit on the branch you already review. It ships the **`karta-doc-gardner`** skill and a writer agent — the only karta agent that edits, and only docs. Full guide: [`docs/how-to/doc-gardner.md`](docs/how-to/doc-gardner.md).
 
 ## Cross-cutting
 
-- **Stack-agnostic.** No skill assumes a component library, framework, data layer, branch convention, or repo layout. UI is one stack among many, not the only one — concrete tools in the docs (Next.js, Style Dictionary, `playwright-cli`, `localhost:3000`, …) are **examples**, resolved per project.
-- **Ad-hoc, repo-directed.** No setup, no project guide, no invariants registry, no stored state. karta reads the binder and the repo at runtime; that's all it consults.
-- **Parallel by default, gated.** Items run concurrently in waves and serialize only where correctness or collision demands it; every non-opted-out item clears its acceptance gate before it merges.
-- **Git-native resume.** The integration branch is the record — commit markers, wave tags, and `refs/karta/` refs let a later run continue or clear a partial one.
-- **No PR.** Delivery ends at the assembled integration branch. You review and merge it; karta never opens a PR or pushes.
+- **Any stack.** No skill assumes a framework, library, data layer, or repo layout. Tool names in the docs (Next.js, Style Dictionary, `playwright-cli`, `localhost:3000`) are examples, resolved per project.
+- **No setup.** No config, registry, or stored state — just the binder and your repo, read at runtime.
+- **Parallel, gated.** Items run in waves and serialize only on collisions; each clears its gate before merging.
+- **Git-native resume.** The integration branch is the record; a re-run continues or clears a partial one.
+- **No PR.** karta stops at the assembled branch. You review and merge — it never opens a PR or pushes.
 
 ## Layout
 
@@ -124,34 +112,36 @@ karta/
   scripts/            validate_plugin.py + sync_codex_skills.py + sync_codex_agents.py + …
 ```
 
-Each skill is a directory whose `SKILL.md` carries the frontmatter and workflow (with heavy material in `references/` loaded on demand); each agent is a markdown file under `agents/` with `name`/`description` frontmatter. Skills are listed explicitly in the Claude marketplace manifest (`.claude-plugin/marketplace.json`, a `strict` plugin entry) and bundled from `skills/` by the Codex manifest. The `skills/` and `agents/` trees are **canonical**; the Codex projections — `.agents/skills/` (repo-local discovery), `plugins/karta/` (marketplace install path), and `.codex/agents/*.toml` plus the bundled `*.agent.md` gate instructions — are **generated** by `sync_codex_skills.py` / `sync_codex_agents.py` and kept byte-identical to their source. The two directory projections are real files, not symlinks, so Codex sees them on Windows, macOS, and Linux. `validate_plugin.py` checks every manifest, mirror file, and projection in one pass, so nothing drifts. See `AGENTS.md` for the edit-then-generate workflow.
+Each skill is a directory; its `SKILL.md` holds the frontmatter and workflow, with heavy material in `references/` loaded on demand. Each agent is a markdown file under `agents/`. Skills are listed in the Claude marketplace manifest (`.claude-plugin/marketplace.json`) and bundled from `skills/` by the Codex manifest.
+
+`skills/` and `agents/` are canonical. The Codex projections — `.agents/skills/`, `plugins/karta/`, and `.codex/agents/*.toml` plus the bundled `*.agent.md` gates — are generated from them by `sync_codex_skills.py` / `sync_codex_agents.py` and kept byte-identical. They're real files, not symlinks, so Codex sees them on Windows, macOS, and Linux. `validate_plugin.py` checks every manifest, mirror, and projection in one pass. See `AGENTS.md` for the edit-then-generate workflow.
 
 ## Requirements
 
-- **`karta-plan`** needs read access to the work description / design source and the repo; it writes only the binder, never implementation code.
-- **`karta-deliver`** and **`karta-build`** need `git` (per-item worktrees), the project's package manager + toolchain (lint/test/build/dev), and the binder on disk.
-- **`karta-verify`** needs the diff and the binder; it dispatches the two gate agents and runs read-only.
-- **`karta-validate`** needs [`uv`](https://docs.astral.sh/uv/), [`playwright-cli`](https://playwright.dev) (`npm install -g @playwright/cli@latest`, then `playwright-cli install --skills`), and a browser (Chromium). The running app must already be up — the caller owns the dev server's lifecycle.
+- **`karta-plan`** — read access to the work description/design and the repo. Writes only the binder.
+- **`karta-deliver` and `karta-build`** — `git` (per-item worktrees), your package manager + toolchain (lint/test/build/dev), and the binder on disk.
+- **`karta-verify`** — the diff and the binder. Read-only.
+- **`karta-validate`** — [`uv`](https://docs.astral.sh/uv/), [`playwright-cli`](https://playwright.dev) (`npm install -g @playwright/cli@latest`, then `playwright-cli install --skills`), and Chromium. The app must already be running — you own the dev server.
 
 ## Install
 
-karta ships as a self-contained Claude Code plugin + marketplace (the `.claude-plugin/` manifests). The repo is publicly readable on GitHub, so the marketplace install needs no auth — but the code is proprietary, not open source; using it is governed by the [License](#license):
+karta is a self-contained Claude Code plugin (the `.claude-plugin/` manifests). The GitHub repo is public, so install needs no auth — but the code is proprietary, not open source; use is governed by the [License](#license).
 
 ```bash
 /plugin marketplace add https://github.com/TejGandham/karta.git
 /plugin install karta@karta
 ```
 
-This registers all seven skills, namespaced under the plugin — the five pipeline skills (`karta:karta-plan`, `karta:karta-deliver`, `karta:karta-build`, `karta:karta-verify`, `karta:karta-validate`) plus `karta:karta-plainlanguage` and the opt-in `karta:karta-doc-gardner` — and the three agents (two read-only gates plus the doc-gardner writer). (The plugin and skill names are stable since 1.0 with the `karta-` prefix.)
+This registers all seven skills under the `karta:` namespace — the five pipeline skills plus `karta-plainlanguage` and the opt-in `karta-doc-gardner` — and three agents (two gates, one doc writer). Names are stable since 1.0.
 
 ## Use with Codex CLI
 
 karta ships the same skills to Codex two ways:
 
-- **Plugin** — install from the repo marketplace (`.agents/plugins/marketplace.json`, which points at the generated `plugins/karta` install projection). Open `/plugins` in Codex, add this repo as a marketplace source, and install karta. All seven skills come along; invoke one explicitly with `$karta-plan` (or `@karta`), or let Codex pick it implicitly from your prompt.
-- **Clone and run** — run `codex` inside a karta checkout. Codex auto-discovers the skills from the committed `.agents/skills/` mirror (real directories, no symlink, so it works on macOS, Linux, and Windows).
+- **Plugin** — add this repo as a marketplace source in `/plugins`, then install karta. Invoke a skill with `$karta-plan` (or `@karta`), or let Codex pick one from your prompt.
+- **Clone and run** — run `codex` in a karta checkout. Codex auto-discovers the skills from the committed `.agents/skills/` mirror (real directories, no symlinks, so macOS, Linux, and Windows all work).
 
-**The gate runs automatically — no setup.** Codex plugins can't register subagents, so on a plugin install `karta-verify` spawns a read-only subagent using the gate instructions bundled inside the skill (`references/*.agent.md`). In a karta checkout, or any project carrying `.codex/agents/*.toml`, the same agents run as registered read-only subagents with sandbox-enforced read-only. Either way you copy nothing. Full details and the one read-only-enforcement nuance are in [docs/how-to/codex.md](docs/how-to/codex.md).
+**The gate runs automatically — no setup.** Codex plugins can't register subagents, so on a plugin install `karta-verify` spawns a read-only subagent from the gate instructions bundled in the skill (`references/*.agent.md`). In a checkout — or any repo with `.codex/agents/*.toml` — the same agents run as registered, sandbox-enforced read-only subagents. Either way you copy nothing. Details: [docs/how-to/codex.md](docs/how-to/codex.md).
 
 ## License
 
