@@ -12,6 +12,7 @@ The binder is karta's spine — the single JSON artifact that drives planning, b
 | `scope.excluded` | string[] | no | Things explicitly left out (prevents scope creep) |
 | `design_facts.source` | string \| null | no | Path to the source design or prototype, or null |
 | `design_facts.stack` | string | no | Resolved tech stack, recorded once at plan time |
+| `sme` | string[] | no | Ids of advisory SME packs matched at plan time; the implementer writes against them and `karta-safety-auditor` enforces each pack's Review checklist (undeclared violations only). Absent or `[]` = none |
 | `token_manifest` | object \| null | no | Shared design-token map; present only when a token system exists |
 | `env_contract.command` | string | yes | The project's own test/dev env command |
 | `env_contract.supports_isolation` | boolean | yes | Whether the command accepts injectable isolation params |

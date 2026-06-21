@@ -29,6 +29,11 @@
         "stack": { "type": "string", "description": "resolved stack, recorded once" }
       }
     },
+    "sme": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+      "description": "ids of advisory SME packs auto-matched at plan time; the Review checklist of each is the enforceable subset the safety-auditor judges (project-local .karta/sme/<id>.md overrides the built-in references/sme/<id>.md)"
+    },
     "token_manifest": {
       "type": ["object", "null"],
       "description": "shared design-token map; present only when a token system exists"

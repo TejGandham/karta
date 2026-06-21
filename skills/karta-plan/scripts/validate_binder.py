@@ -207,8 +207,26 @@ def _run_self_test() -> int:
             {"id": "c", "title": "C", "touches": ["app/x.py"], "oracle": _u},
         ],
     }
+    sme_valid = {
+        "slug": "sme-ok", "motivation": "x", "scope": {"included": ["x"]},
+        "sme": ["angular", "python-fastapi"],
+        "work_items": [{"id": "a", "title": "A", "oracle": _u}],
+    }
+    sme_not_array = {
+        "slug": "sme-bad", "motivation": "x", "scope": {"included": ["x"]},
+        "sme": "angular",
+        "work_items": [{"id": "a", "title": "A", "oracle": _u}],
+    }
+    sme_bad_id = {
+        "slug": "sme-badid", "motivation": "x", "scope": {"included": ["x"]},
+        "sme": ["Angular_Expert"],
+        "work_items": [{"id": "a", "title": "A", "oracle": _u}],
+    }
     cases = [
         ("valid example", valid, True),
+        ("binder with sme packs", sme_valid, True),
+        ("sme not an array", sme_not_array, False),
+        ("sme id bad pattern", sme_bad_id, False),
         ("cyclic deps", cyclic, False),
         ("dangling dep", dangling, False),
         ("missing oracle", no_oracle, False),
