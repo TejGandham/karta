@@ -75,6 +75,19 @@ It is **all or nothing** — opted in, drift is corrected automatically; opted o
 
 It ships the **`karta-doc-gardner`** skill and its writer agent — the one karta agent that edits, and only docs. Full guide: [`docs/how-to/doc-gardner.md`](docs/how-to/doc-gardner.md).
 
+## Domain experts (SME packs)
+
+karta carries curated **SME packs** so planning and implementation follow good norms. There are two kinds:
+
+- **Stack packs** switch on when your project uses that tech — built-ins ship for `angular` and `python-fastapi`.
+- **Rule packs** apply to every project — the built-in `minimalism` pack distils ponytail's ladder (write the least code that works; reach for the stdlib and the platform before a dependency) at its "full" level.
+
+At plan time karta applies the rule packs plus any stack packs that match the repo, and pins their ids in the binder's `sme` field; karta-build loads them to write against. ponytail's "use the platform" tables ship as a shared `platform-native` reference the packs link to. A project adds or overrides any pack — stack or rule — by dropping `.karta/sme/<id>.md` in its repo (project-local wins on a name clash); a no-op file silences a built-in rule pack.
+
+Each pack's **Review checklist** is the enforceable part (checklist items are diff-checkable; the advisory do's/don'ts and the ladder never block). Before commit the build implementer self-checks its diff; a deliberate deviation is declared inline with a `KARTA-SME-OVERRIDE(<pack>: <rule>): <reason>` marker, optionally naming where the shortcut breaks and what forces a revisit. The existing `karta-safety-auditor` then flags any **undeclared** checklist violation as a boundary crossing the item never justified — a kickback, escalating to you at its cap. A declared override passes and is surfaced in the run report. The acceptance gate stays SME-unaware: exactly one acceptance authority.
+
+Two companions: **`/karta-debt`** harvests every deferral and override marker across the repo into a one-shot, read-only ledger (it flags any shortcut with no upgrade trigger, and writes nothing — karta keeps no backlog), and **`benchmarks/sme/`** is an A/B method to check a pack actually helps (same task with and without the pack: less code, gate still green), reporting only benchmark deltas, never an invented per-repo savings figure.
+
 ## Cross-cutting
 
 - **Stack-agnostic.** No skill assumes a component library, framework, data layer, branch convention, or repo layout. UI is one stack among many, not the only one — concrete tools in the docs (Next.js, Style Dictionary, `playwright-cli`, `localhost:3000`, …) are **examples**, resolved per project.
