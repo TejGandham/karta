@@ -234,6 +234,45 @@ def sme_warnings(binder: dict) -> list[str]:
             "always-on 'minimalism' pack; confirm the plan:sme matching step ran"]
 
 
+def cross_binder_errors(binders: list[dict]) -> tuple[list[str], list[str]]:
+    """Check the cross-binder `after` graph across a whole set of binders.
+
+    Returns (errors, warnings). A dangling `after` ref (no binder with that slug) is a
+    WARNING — the suggested order is recomputed over the binders that exist, so a stale edge
+    surfaces but never fails the set. A cycle across `after` edges is an ERROR — a cycle has no
+    valid order. A single binder, or binders with no `after`, produce nothing."""
+    slugs = {b.get("slug") for b in binders}
+    warnings: list[str] = []
+    graph: dict[str, list[str]] = {}
+    for b in binders:
+        slug = b.get("slug")
+        resolved: list[str] = []
+        for ref in b.get("after", []) or []:
+            if ref not in slugs:
+                warnings.append(f"binder '{slug}' has a dangling after: '{ref}' (no such binder)")
+            else:
+                resolved.append(ref)
+        graph[slug] = resolved
+
+    errors: list[str] = []
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = {s: WHITE for s in graph}
+
+    def visit(node: str, stack: list[str]) -> None:
+        color[node] = GRAY
+        for nxt in graph.get(node, []):
+            if color.get(nxt) == GRAY:
+                errors.append("after cycle: " + " -> ".join(stack + [nxt]))
+            elif color.get(nxt) == WHITE:
+                visit(nxt, stack + [nxt])
+        color[node] = BLACK
+
+    for s in sorted(graph):
+        if color[s] == WHITE:
+            visit(s, [s])
+    return errors, sorted(set(warnings))
+
+
 def _run_self_test() -> int:
     valid = json.loads((SCHEMA_PATH.parent / "example-binder.json").read_text())
     cyclic = {
@@ -377,7 +416,37 @@ def _run_self_test() -> int:
     ok = len(sme_warnings(cyclic)) == 1 and len(sme_warnings(sme_valid)) == 0
     print(f"[{'PASS' if ok else 'FAIL'}] sme warning fires only on empty sme")
     failures += 0 if ok else 1
-    print(f"\n{len(cases) + 2 - failures}/{len(cases) + 2} checks passed")
+
+    # cross-binder `after` graph (resolution + acyclicity)
+    cb_new   = {"slug": "s-new",   "motivation": "x", "scope": {"included": ["x"]},
+                "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
+    cb_edit  = {"slug": "s-edit",  "after": ["s-new"], "motivation": "x", "scope": {"included": ["x"]},
+                "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
+    cb_del   = {"slug": "s-del",   "after": ["s-edit"], "motivation": "x", "scope": {"included": ["x"]},
+                "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
+    cb_dangle = {"slug": "s-x",    "after": ["ghost"], "motivation": "x", "scope": {"included": ["x"]},
+                 "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
+    cb_cyc_a = {"slug": "ca", "after": ["cb"], "motivation": "x", "scope": {"included": ["x"]},
+                "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
+    cb_cyc_b = {"slug": "cb", "after": ["ca"], "motivation": "x", "scope": {"included": ["x"]},
+                "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
+
+    cb_cases = [
+        ("clean after-chain", [cb_new, cb_edit, cb_del], [], 0),         # no errors, no warnings
+        ("dangling after-ref", [cb_dangle], [], 1),                       # 1 warning, no error
+        ("after cycle", [cb_cyc_a, cb_cyc_b], "cycle", 0),                # error present
+        ("lone binder unchanged", [cb_new], [], 0),                       # nothing flagged
+    ]
+    for name, binders, want_err, want_warn in cb_cases:
+        errs, warns = cross_binder_errors(binders)
+        if want_err == "cycle":
+            ok = any("cycle" in e for e in errs)
+        else:
+            ok = (errs == []) and (len(warns) == want_warn)
+        print(f"[{'PASS' if ok else 'FAIL'}] {name}: errors={errs} warnings={warns}")
+        failures += 0 if ok else 1
+
+    print(f"\n{len(cases) + 2 + len(cb_cases) - failures}/{len(cases) + 2 + len(cb_cases)} checks passed")
     return 1 if failures else 0
 
 
@@ -403,6 +472,25 @@ def main() -> int:
         print(f"  opt-out: {s}")
     for w in sme_warnings(binder):
         print(f"  warning: {w}")
+    # cross-binder `after` graph, when the binder is one of a set on disk
+    if args.binder:
+        siblings = []
+        for p in sorted(args.binder.resolve().parent.glob("*.json")):
+            try:
+                doc = json.loads(p.read_text())
+                if isinstance(doc, dict) and "slug" in doc:
+                    siblings.append(doc)
+            except (OSError, json.JSONDecodeError):
+                continue
+        if len(siblings) > 1:
+            cb_errs, cb_warns = cross_binder_errors(siblings)
+            for w in cb_warns:
+                print(f"  warning: {w}")
+            if cb_errs:
+                print("INVALID (cross-binder):")
+                for e in cb_errs:
+                    print(f"  - {e}")
+                return 1
     return 0
 
 

@@ -29,6 +29,12 @@
         "stack": { "type": "string", "description": "resolved stack, recorded once" }
       }
     },
+    "after": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+      "default": [],
+      "description": "slugs of binders that must merge before this one — the cross-binder dependency the suggested run order is derived from; the order itself is never stored"
+    },
     "sme": {
       "type": "array",
       "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
