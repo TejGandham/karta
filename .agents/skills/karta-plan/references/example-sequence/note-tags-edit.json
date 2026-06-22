@@ -1,5 +1,6 @@
 {
   "slug": "note-tags-edit",
+  "after": ["note-tags-new"],
   "motivation": "Wire AppShell's note-save flow to use NoteTagEditor so edited tags persist through the existing notes update API. Stage 2 of 3 (new then edit then delete): assumes note-tags-new is merged.",
   "scope": {
     "included": ["AppShell edit mode mounts NoteTagEditor", "tags included in the note update payload"],

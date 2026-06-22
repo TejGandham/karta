@@ -2,13 +2,18 @@
 
 The binder is karta's spine — the single JSON artifact that drives planning, build, and integration from start to finish. Every karta skill reads it; none of them write to it during a build run. The shape is karta's own. `validate_binder.py` gates every binder before a run: it checks schema validity, detects dependency cycles, flags dangling `depends_on` references, and prints an opt-out summary.
 
-A binder may stand alone, or be one of an **ordered set** that karta-plan emits when work separates into stages that must land in order (expand → migrate → contract; see [example-sequence/](example-sequence/)). Each binder in a set is fully self-sufficient — independently valid and independently mergeable. The order is given once as plan-time advice and is **not persisted**: there is no sequence manifest, no `after` field, and no ordering encoded in slugs (slugs are descriptive and unique, grouped by a shared prefix). The user runs the binders in the suggested order manually.
+A binder may stand alone, or be one of an **ordered set** that karta-plan emits when work separates into stages that must land in order (expand → migrate → contract; see [example-sequence/](example-sequence/)). Each binder in a set is fully self-sufficient — independently valid and independently mergeable. Slugs are descriptive and unique, grouped by a shared prefix; no ordering is encoded in slugs.
+
+When emitting a set, karta-plan stores the cross-binder dependency as an `after` edge on each binder that has a predecessor. The run order is derived from those edges (a topo sort) and is never stored separately — no sequence manifest, no ordering in slugs. The spoken plan-time advice and `karta-status`'s live ordering are always the same topo sort over the same `after` edges. The user runs the binders in the derived order manually.
+
+**`after` — cross-binder predecessor slugs.** `after` is an optional top-level array of slug strings naming the binders that must be merged before this one starts. It is the only stored cross-binder dependency. A dangling reference (a slug that does not resolve to a sibling binder in the set) is a warning; a cycle is an error. The run order is always derived from `after` edges (topo sort) and never stored directly.
 
 ## Binder-level fields
 
 | Field | Type | Required | Meaning |
 |-|-|-|-|
 | `slug` | string (kebab-case) | yes | Names the integration branch (`karta/<slug>/integration`) and all wave tags |
+| `after` | string[] | no | Predecessor binder slugs; the only stored cross-binder dependency; run order is derived from these edges (topo sort), never stored separately; dangling ref = warning, cycle = error |
 | `motivation` | string | yes | One-sentence reason this binder exists |
 | `scope.included` | string[] | yes | Areas of the codebase in scope |
 | `scope.excluded` | string[] | no | Things explicitly left out (prevents scope creep) |

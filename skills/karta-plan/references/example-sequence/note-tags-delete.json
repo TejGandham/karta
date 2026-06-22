@@ -1,5 +1,6 @@
 {
   "slug": "note-tags-delete",
+  "after": ["note-tags-edit"],
   "motivation": "Remove the legacy inline tag-editing code now that NoteTagEditor owns it. Stage 3 of 3 (new then edit then delete): assumes note-tags-edit is merged, so nothing references the old code.",
   "scope": {
     "included": ["remove legacy tag-input markup and handlers from AppShell"],
