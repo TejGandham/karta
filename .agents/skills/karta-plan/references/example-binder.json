@@ -9,6 +9,7 @@
     "source": "design-export/notifications.html",
     "stack": "Next.js app router + internal component library + DTCG tokens + GraphQL"
   },
+  "sme": ["minimalism"],
   "token_manifest": null,
   "env_contract": {
     "command": "npm run dev",

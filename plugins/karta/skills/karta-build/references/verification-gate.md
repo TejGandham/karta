@@ -8,6 +8,12 @@ The gate runs on the actual diff, in a fresh AI session, with a deliberately thi
 
 The gate is realized by dispatching two karta-owned agents — `karta-acceptance-reviewer` and `karta-safety-auditor` — plus `karta-validate` for visual oracles. Each runs read-only: it reports, it never edits.
 
+## When the runtime cannot provide that fresh session
+
+The fresh, independent session is not a nicety — it *is* the gate. So when the runtime cannot spawn a subagent or host worker at all (some hosts gate delegation behind an explicit user opt-in — a Codex session whose tool policy blocks sub-agents until the user asks for them is the common case), karta has no isolated session to dispatch into, and an inline pass in the build session is the implementer grading its own work — exactly what the gate exists to prevent.
+
+karta does **not** silently substitute that inline pass. It **surfaces** the condition: name what is blocked (no isolated read-only session is available in this runtime), why it matters (the gate would become the implementer judging itself), and the one action that unblocks it (authorize sub-agents / delegation in the host, then re-run). The item is **blocked at the gate, not passed** — the same halt-and-surface posture as a floor failure. A person may then explicitly accept a clearly-marked *degraded inline review* — recorded like a human accept-waiver — but karta never makes that substitution on its own and never reports a gate as cleared when only an inline self-review ran.
+
 ## Three checks, all on the actual diff
 
 1. **Acceptance.** Does the diff satisfy the oracle's assertions? Visual oracles go to `karta-validate`, which compares rendered output against the design. Unit, integration, e2e, and smoke oracles go to `karta-acceptance-reviewer`, which dispositions each assertion against the code.

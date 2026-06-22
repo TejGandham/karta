@@ -70,7 +70,7 @@ Accept a problem or feature description as the only hard requirement. Optionally
 
 ### Phase 1 — Best-effort repo + stack understanding (Explore subagent)  `plan:survey`
 
-Use an **Explore subagent** OR an inline read-only pass to survey the repo.
+Use an **Explore subagent** OR an inline read-only pass to survey the repo. Both are sanctioned; when the host cannot spawn the subagent, run inline — but note in what you show the user that the survey ran inline, rather than letting the degraded path pass unremarked.
 
 **Subagent brief:**
 
@@ -114,6 +114,8 @@ Load the applied packs now — their guidance feeds synthesis (Phase 2) and thei
 ### Phase 2 — Synthesize the binder (synthesis subagent; main thread owns judgment)  `plan:synthesize`
 
 Decompose the stated intent into work items. Do not delegate this judgment — the synthesis subagent drafts; you review and own the output.
+
+When the runtime cannot spawn the synthesis subagent (a host that gates delegation behind an explicit opt-in), **say so and synthesize inline in the main thread** — the binder is still yours to review and own, but the fresh-context draft/review separation was unavailable this run, so flag that plainly in what you show the user. Running inline is **not** licence to skip phases: still run the stack-pack match (`plan:sme`) and pin `sme[]` (every binder carries at least the always-on packs, e.g. `["minimalism"]`), and still apply every survey output. Degrade visibly; never drop steps silently.
 
 **Subagent brief:**
 

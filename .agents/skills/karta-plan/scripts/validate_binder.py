@@ -222,6 +222,18 @@ def opt_out_summary(binder: dict) -> list[str]:
             if isinstance(it.get("oracle"), dict) and it["oracle"].get("opt_out")]
 
 
+def sme_warnings(binder: dict) -> list[str]:
+    """Advisory (non-fatal) notes. An empty or absent `sme` means no stack packs were
+    pinned — yet every binder should carry at least the always-on `minimalism` pack, so an
+    empty `sme` almost always means the plan:sme matching step was skipped. Surfaced on every
+    run so the omission can't pass unnoticed; never fails validation (a project may legitimately
+    suppress the always-on pack), which is why it is a warning and not a schema error."""
+    if binder.get("sme"):
+        return []
+    return ["no stack packs pinned (sme is empty) — every binder should carry at least the "
+            "always-on 'minimalism' pack; confirm the plan:sme matching step ran"]
+
+
 def _run_self_test() -> int:
     valid = json.loads((SCHEMA_PATH.parent / "example-binder.json").read_text())
     cyclic = {
@@ -361,7 +373,11 @@ def _run_self_test() -> int:
     ok = len(summ) == 1
     print(f"[{'PASS' if ok else 'FAIL'}] opt-out summary on example: {summ}")
     failures += 0 if ok else 1
-    print(f"\n{len(cases) + 1 - failures}/{len(cases) + 1} checks passed")
+    # sme advisory: warns only when no stack packs are pinned
+    ok = len(sme_warnings(cyclic)) == 1 and len(sme_warnings(sme_valid)) == 0
+    print(f"[{'PASS' if ok else 'FAIL'}] sme warning fires only on empty sme")
+    failures += 0 if ok else 1
+    print(f"\n{len(cases) + 2 - failures}/{len(cases) + 2} checks passed")
     return 1 if failures else 0
 
 
@@ -385,6 +401,8 @@ def main() -> int:
     print(f"VALID. {len(binder['work_items'])} work items; {len(summ)} opted out of acceptance checks.")
     for s in summ:
         print(f"  opt-out: {s}")
+    for w in sme_warnings(binder):
+        print(f"  warning: {w}")
     return 0
 
 
