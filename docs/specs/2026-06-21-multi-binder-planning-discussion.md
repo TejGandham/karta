@@ -3,8 +3,8 @@
 > **Status: resolved — superseded by the V1 design spec**
 > [2026-06-22-multi-binder-sequences-design.md](2026-06-22-multi-binder-sequences-design.md).
 > This doc remains as the problem brief: what was observed and the candidate directions. The
-> settled V1 decisions (self-sufficient binders + a plain manifest + a run-order suggestion;
-> no `after` field, no guard, no auto-sequencer, manual movement) live in the spec.
+> settled V1 decisions (self-sufficient binders + plan-time order advice, nothing persisted —
+> no manifest, no `after` field, no guard, no auto-sequencer, manual movement) live in the spec.
 
 ## The trigger
 
