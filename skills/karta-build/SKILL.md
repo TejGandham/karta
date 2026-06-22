@@ -412,6 +412,12 @@ Either form satisfies the requirement: the bracket marker in the subject (canoni
 4. Write `refs/karta/<slug>/item-<item-id>/done` → the merge commit. On a halt, write `refs/karta/<slug>/item-<item-id>/failed` → the halted item-branch tip instead, and stop. **Accept is not available in single-item mode** — you are the sole party, with no orchestrator to hold the human boundary, so a cap-out (or SPEC-SUSPECT) writes only `failed` and halts. Accepting an unmet assertion here requires escalating to an orchestrated context or a karta-plan opt_out; you never write `accepted`.
 5. **Doc-gardner (opt-in).** If `.karta/doc-gardner.json` exists with `enabled: true`, invoke the `karta-doc-gardner` skill in `delivery` mode over this item's diff range (its merge versus the pre-item integration tip), passing the file's `focus`. It corrects any drifted docs to match the merged code and commits a `docs: gardner <slug>` commit on the integration branch — fully automatic, no human, no halt. Absent or disabled, skip it. This is the single-item hatch's equivalent of `karta-deliver`'s `deliver:docgardner`. (A **wave** worker never runs doc-gardner; the orchestrator runs it once for the whole delivery.)
 
+6. **Surface what's next.** After the single-item merge completes, print the condensed next-step footer so the run ends pointing forward:
+
+   `uv run --script skills/karta-status/scripts/karta_next.py --footer --binder <slug>`
+
+   This is read-only — it derives the next action from git, never writes. It is the same engine the `karta-status` skill uses, so the footer and the command never disagree. A **wave worker does not print a footer** — the orchestrator owns the run's end.
+
 **9c-wave — orchestrated wave (the worker commits and stops; the orchestrator merges).** When `RUN_MODE` is orchestrated, **stop at the committed item branch** — do **not** touch `karta/<slug>/integration` and do **not** write the `done` ref. The pass signal is durable git state, not an ephemeral report:
 
 1. Leave the item branch `karta/<slug>/item-<item-id>` committed (9b) and secret-scanned (9a) at its tip — this is your terminal artifact.

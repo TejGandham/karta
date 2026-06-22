@@ -144,6 +144,12 @@ After the wave's accept/defer decisions resolve, run a final post-wave check on 
 
 Committed item branches and the integration branch persist. A later `karta-deliver` run detects them via preflight (`deliver:preflight`) and offers to resume.
 
+**Surface what's next.** After the wave's result is known, print the condensed next-step footer so the run ends pointing forward:
+
+  `uv run --script skills/karta-status/scripts/karta_next.py --footer --binder <slug>`
+
+This is read-only — it derives the next action from git, never writes. It is the same engine the `karta-status` skill uses, so the footer and the command never disagree.
+
 ---
 
 ## Phase 5 — Cost education  `deliver:cost`
