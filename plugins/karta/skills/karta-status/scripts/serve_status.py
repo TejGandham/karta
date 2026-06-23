@@ -123,6 +123,10 @@ _ICONS: dict[str, list[tuple[str, dict]]] = {
     "play": [("polygon", {"points": "6 3 20 12 6 21 6 3"})],
     "copy": [("rect", {"x": 9, "y": 9, "width": 12, "height": 12, "rx": 2}),
              ("path", {"d": "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"})],
+    "sun": [("circle", {"cx": 12, "cy": 12, "r": 4}), ("path", {"d": "M12 2v2"}), ("path", {"d": "M12 20v2"}), ("path", {"d": "m4.93 4.93 1.41 1.41"}), ("path", {"d": "m17.66 17.66 1.41 1.41"}), ("path", {"d": "M2 12h2"}), ("path", {"d": "M20 12h2"}), ("path", {"d": "m6.34 17.66-1.41 1.41"}), ("path", {"d": "m19.07 4.93-1.41 1.41"})],
+    "moon": [("path", {"d": "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"})],
+    "eye": [("path", {"d": "M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"}), ("circle", {"cx": 12, "cy": 12, "r": 3})],
+    "eye-off": [("path", {"d": "m15 18-.722-3.25"}), ("path", {"d": "M2 8a10.645 10.645 0 0 0 20 0"}), ("path", {"d": "m20 15-1.726-2.05"}), ("path", {"d": "m4 15 1.726-2.05"}), ("path", {"d": "m9 18 .722-3.25"})],
 }
 
 
@@ -255,6 +259,23 @@ main{ display:flex; flex-direction:column; gap:16px; }
 }
 .timer__hole{ position:absolute; inset:4px; border-radius:0; background:var(--bg); display:block; }
 
+/* header right cluster: hide-done + theme toggles, then the live indicator */
+.hdr-right{ display:flex; align-items:center; gap:10px; flex:none; }
+.hctl{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--mono); font-size:12px; line-height:1;
+  padding:6px 9px; border-radius:0; border:1px solid var(--line);
+  background:transparent; color:var(--mut); cursor:pointer;
+  transition:color .2s, border-color .2s, background .2s;
+}
+.hctl:hover{ color:var(--ink); border-color:var(--mut); }
+.hctl--icon{ padding:6px; }
+.hctl--on{
+  border-color:var(--amber); background:var(--amber-soft); color:var(--amber);
+}
+.hctl--on:hover{ color:var(--amber); border-color:var(--amber); }
+.hctl__l{ display:inline-block; }
+
 /* hero — YOU RUN NEXT */
 .hero{ background:var(--banner); color:var(--banner-ink); border-radius:0; padding:15px 20px; }
 .hero__row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
@@ -296,6 +317,7 @@ main{ display:flex; flex-direction:column; gap:16px; }
 /* binders panel: card column + star endpoint */
 .bgrid{ display:flex; align-items:stretch; }
 .bcol{ flex:1; display:flex; flex-direction:column; gap:11px; min-width:0; }
+.bhidden{ font-family:var(--mono); font-size:11px; color:var(--mut); margin:0; opacity:.85; }
 .brow{ display:flex; align-items:center; gap:11px; }
 .brow__ord{
   flex:none; width:14px; text-align:center;
@@ -476,6 +498,9 @@ const app = createApp({
       expanded: {},      // work-item id -> bool
       copied: false,
       reconnecting: false,
+      hideDone: localStorage.getItem('karta-hide-done') === '1',
+      theme: localStorage.getItem('karta-theme')
+        || window.__KARTA_THEME__ || 'dark',
       _copyTimer: null,
       _pollTimer: null,
     };
@@ -508,7 +533,7 @@ const app = createApp({
         const total = b.items.total;
         const done = doneCount(b);
         return {
-          slug: b.slug, ordinal: i + 1, color: m.color, icon: m.icon,
+          slug: b.slug, ordinal: i + 1, status: b.status, color: m.color, icon: m.icon,
           stateIcon: m.icon, spin: kind === 'building',
           stage: STAGE_LABEL[b.status] || 'not started',
           pct: total ? Math.round(done / total * 100) : 0,
@@ -516,6 +541,20 @@ const app = createApp({
           selected: b.slug === this.viewedSlug,
         };
       });
+    },
+    // the cards actually rendered in the column: drop merged ones when hiding
+    // completed binders. Ordinals stay tied to full-sequence position (no renumber).
+    visibleBinderCards() {
+      if (!this.hideDone) return this.binderCards;
+      return this.binderCards.filter(c => c.status !== 'merged');
+    },
+    // how many merged binders exist (for the collapsed-hint count).
+    mergedBinderCount() {
+      return this.binderCards.filter(c => c.status === 'merged').length;
+    },
+    // how many cards are actually hidden right now (0 unless hiding is on).
+    hiddenBinderCount() {
+      return this.hideDone ? this.mergedBinderCount : 0;
     },
     groups() {
       const vb = this.viewedBinder;
@@ -553,6 +592,15 @@ const app = createApp({
     isExpanded(d) { return !!this.expanded[d.id]; },
     toggle(d) { this.expanded = Object.assign({}, this.expanded, { [d.id]: !this.expanded[d.id] }); },
     selectBinder(slug) { this.viewSlug = slug; },
+    toggleHideDone() {
+      this.hideDone = !this.hideDone;
+      try { localStorage.setItem('karta-hide-done', this.hideDone ? '1' : '0'); } catch (e) {}
+    },
+    toggleTheme() {
+      this.theme = this.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = this.theme;
+      try { localStorage.setItem('karta-theme', this.theme); } catch (e) {}
+    },
     copyCmd() {
       const cmd = this.nextAction.command || '';
       const done = () => {
@@ -579,6 +627,9 @@ const app = createApp({
     },
   },
   mounted() {
+    // Apply the resolved theme (a stored preference overrides the server default
+    // baked into data-theme on reload). CSS keys off :root[data-theme=...].
+    document.documentElement.dataset.theme = this.theme;
     // The live mirror: only poll when actually served over http(s). A file://
     // snapshot keeps the inlined first-paint state and never tries to fetch.
     if (location.protocol !== 'file:') {
@@ -602,12 +653,27 @@ const app = createApp({
         <div class="brand__sub">watching a binder sequence build · read-only mirror of git</div>
       </div>
     </div>
-    <div class="live" :class="{ 'live--recon': reconnecting }">
-      <span class="timer" :class="{ 'timer--recon': reconnecting }" aria-hidden="true">
-        <span class="timer__sweep"></span>
-        <span class="timer__hole"></span>
-      </span>
-      <span class="live__label">{{ reconnecting ? 'reconnecting…' : 'live' }}</span>
+    <div class="hdr-right">
+      <button type="button" class="hctl" :class="{ 'hctl--on': hideDone }"
+        @click="toggleHideDone"
+        :title="hideDone ? 'show all binders' : 'hide completed binders'"
+        :aria-pressed="hideDone ? 'true' : 'false'">
+        <icon :name="hideDone ? 'eye-off' : 'eye'" :size="14" color="currentColor" />
+        <span class="hctl__l">{{ hideDone ? 'show all' : 'hide done' }}</span>
+      </button>
+      <button type="button" class="hctl hctl--icon"
+        @click="toggleTheme"
+        :title="theme === 'dark' ? 'switch to light mode' : 'switch to dark mode'"
+        aria-label="toggle theme">
+        <icon :name="theme === 'dark' ? 'sun' : 'moon'" :size="14" color="currentColor" />
+      </button>
+      <div class="live" :class="{ 'live--recon': reconnecting }">
+        <span class="timer" :class="{ 'timer--recon': reconnecting }" aria-hidden="true">
+          <span class="timer__sweep"></span>
+          <span class="timer__hole"></span>
+        </span>
+        <span class="live__label">{{ reconnecting ? 'reconnecting…' : 'live' }}</span>
+      </div>
     </div>
   </header>
 
@@ -643,7 +709,7 @@ const app = createApp({
           <b>suggested</b> order, not a dependency.</p>
         <div class="bgrid">
           <div class="bcol">
-            <div class="brow" v-for="c in binderCards" :key="c.slug">
+            <div class="brow" v-for="c in visibleBinderCards" :key="c.slug">
               <span class="brow__ord">{{ c.ordinal }}</span>
               <a class="bcard" :class="{ 'bcard--sel': c.selected }" href="#" @click.prevent="selectBinder(c.slug)">
                 <div class="bcard__top">
@@ -659,6 +725,7 @@ const app = createApp({
               </a>
               <span class="brow__conn" aria-hidden="true"></span>
             </div>
+            <p class="bhidden" v-if="hiddenBinderCount > 0">+ {{ hiddenBinderCount }} completed binder{{ hiddenBinderCount === 1 ? '' : 's' }} hidden</p>
           </div>
           <div class="bstar">
             <span class="bstar__line" aria-hidden="true"></span>
