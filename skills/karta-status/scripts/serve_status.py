@@ -21,12 +21,14 @@ The page is "Karta Watch": a read-only mirror of git. A thin stdlib server hands
 browser the current state inline (for a correct first paint, and so a file:// snapshot
 works without a server) plus the vendored Vue app, which renders the whole design
 reactively and — when not on file:// — polls /state.json every 2.6s as a live mirror.
-The next action is the amber hero band ("YOU RUN NEXT"); the binder sequence is a card
-column that ends at the gold star (main / the integration branch); the viewed binder's
-work items are grouped by state with click-to-expand oracle detail. Light + dark ship
-in one stylesheet via prefers-color-scheme; `?theme=light|dark` forces one (screenshots).
-Self-contained: no CDN, no remote images, no remote fonts, no external JS — Vue is the
-one vendored same-origin file.
+The layout is a single "Delivery" panel holding a vertical timeline of phases —
+Delivered (past), Now (in flight), Next, Later — each phase listing the binders in it
+as expandable cards. A binder card expands to show its work items grouped into waves by
+dependency depth (parallel within a wave, serial between), each item click-to-expand for
+its oracle assertion, command, and dependency. Light + dark ship in one stylesheet via
+prefers-color-scheme; `?theme=light|dark` forces one (screenshots). Self-contained: no
+CDN, no remote images, no remote fonts, no external JS — Vue is the one vendored
+same-origin file.
 """
 from __future__ import annotations
 
@@ -91,14 +93,23 @@ def current_state() -> dict:
 # Vue app renders the identical inline <svg> shapes.
 # ---------------------------------------------------------------------------
 
+# Ported VERBATIM from the design's ICONS() (lucide path data). The Python side
+# ships the same data to the browser as `const ICONS = {...}` so the Vue `Icon`
+# component renders identical inline <svg> shapes.
 _ICONS: dict[str, list[tuple[str, dict]]] = {
-    "done": [("circle", {"cx": 12, "cy": 12, "r": 10}),
-             ("path", {"d": "m8.5 12 2.4 2.4 4.6-5"})],
+    "check": [("path", {"d": "M20 6 9 17l-5-5"})],
     "building": [("path", {"d": "M21 12a9 9 0 1 1-6.219-8.56"})],
-    "ready": [("circle", {"cx": 12, "cy": 12, "r": 10}),
-              ("polygon", {"points": "10 8 16 12 10 16"})],
+    "play": [("polygon", {"points": "7 4 19 12 7 20 7 4"})],
     "blocked": [("rect", {"x": 3, "y": 11, "width": 18, "height": 10, "rx": 2}),
                 ("path", {"d": "M7 11V7a5 5 0 0 1 10 0v4"})],
+    "clock": [("circle", {"cx": 12, "cy": 12, "r": 9}),
+              ("path", {"d": "M12 7v5l3.5 2"})],
+    "hourglass": [("path", {"d": "M5 22h14"}),
+                  ("path", {"d": "M5 2h14"}),
+                  ("path", {"d": "M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"}),
+                  ("path", {"d": "M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"})],
+    "send": [("path", {"d": "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"}),
+             ("path", {"d": "m21.854 2.147-10.94 10.939"})],
     "unit": [("path", {"d": "M14 2v6l5.5 9.5a2 2 0 0 1-1.7 3H6.2a2 2 0 0 1-1.7-3L10 8V2"}),
              ("path", {"d": "M8.5 2h7"}),
              ("path", {"d": "M7 16h10"})],
@@ -108,64 +119,68 @@ _ICONS: dict[str, list[tuple[str, dict]]] = {
     "e2e": [("circle", {"cx": 6, "cy": 19, "r": 3}),
             ("path", {"d": "M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"}),
             ("circle", {"cx": 18, "cy": 5, "r": 3})],
-    "smoke": [("path", {"d": "M22 12h-4l-3 9L9 3l-3 9H2"})],
     "visual": [("path", {"d": "M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"}),
                ("circle", {"cx": 12, "cy": 12, "r": 3})],
-    "binder": [("path", {"d": "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"}),
-               ("path", {"d": "m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"}),
-               ("path", {"d": "m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"})],
     "branch": [("line", {"x1": 6, "x2": 6, "y1": 3, "y2": 15}),
                ("circle", {"cx": 18, "cy": 6, "r": 3}),
                ("circle", {"cx": 6, "cy": 18, "r": 3}),
                ("path", {"d": "M18 9a9 9 0 0 1-9 9"})],
-    "star": [("polygon", {"points": "12 2 15 8.5 22 9.3 17 14 18.3 21 12 17.5 5.7 21 7 14 2 9.3 9 8.5"})],
-    "arrow": [("path", {"d": "m9 18 6-6-6-6"})],
-    "play": [("polygon", {"points": "6 3 20 12 6 21 6 3"})],
-    "copy": [("rect", {"x": 9, "y": 9, "width": 12, "height": 12, "rx": 2}),
-             ("path", {"d": "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"})],
+    "fork": [("circle", {"cx": 6, "cy": 6, "r": 3}),
+             ("circle", {"cx": 18, "cy": 6, "r": 3}),
+             ("circle", {"cx": 12, "cy": 18, "r": 3}),
+             ("path", {"d": "M6 9v1a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9"}),
+             ("path", {"d": "M12 12v3"})],
+    "arrowdown": [("path", {"d": "M12 5v14"}),
+                  ("path", {"d": "m19 12-7 7-7-7"})],
     "sun": [("circle", {"cx": 12, "cy": 12, "r": 4}), ("path", {"d": "M12 2v2"}), ("path", {"d": "M12 20v2"}), ("path", {"d": "m4.93 4.93 1.41 1.41"}), ("path", {"d": "m17.66 17.66 1.41 1.41"}), ("path", {"d": "M2 12h2"}), ("path", {"d": "M20 12h2"}), ("path", {"d": "m6.34 17.66-1.41 1.41"}), ("path", {"d": "m19.07 4.93-1.41 1.41"})],
     "moon": [("path", {"d": "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"})],
-    "eye": [("path", {"d": "M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"}), ("circle", {"cx": 12, "cy": 12, "r": 3})],
-    "eye-off": [("path", {"d": "m15 18-.722-3.25"}), ("path", {"d": "M2 8a10.645 10.645 0 0 0 20 0"}), ("path", {"d": "m20 15-1.726-2.05"}), ("path", {"d": "m4 15 1.726-2.05"}), ("path", {"d": "m9 18 .722-3.25"})],
+    "square": [("rect", {"x": 3, "y": 3, "width": 18, "height": 18, "rx": 2})],
+    "checksquare": [("rect", {"x": 3, "y": 3, "width": 18, "height": 18, "rx": 2}),
+                    ("path", {"d": "m9 12 2 2 4-4"})],
 }
 
 
 # ---------------------------------------------------------------------------
-# State metadata — color + soft + icon + label per item/binder state.
-# Mirrors the design's stateMeta, extended to cover the engine's `built`/`failed`
-# so those surface instead of breaking the page. Shipped to JS verbatim.
+# Item-state metadata — color + soft + badge icon + state word per engine state.
+# Ported from the design's `sm` (done/building/ready/blocked) and EXTENDED to cover
+# the engine's full set (built/failed) so every state surfaces instead of breaking
+# the page. `building` carries the spin/shimmer. Shipped to JS verbatim.
 # ---------------------------------------------------------------------------
 
-_STATE = {
-    "done":     {"color": "var(--green)", "soft": "var(--green-soft)", "icon": "done",     "label": "done"},
-    "building": {"color": "var(--amber)", "soft": "var(--amber-soft)", "icon": "building", "label": "building"},
-    "ready":    {"color": "var(--steel)", "soft": "var(--steel-soft)", "icon": "ready",    "label": "ready"},
-    "blocked":  {"color": "var(--block)", "soft": "var(--block-soft)", "icon": "blocked",  "label": "blocked"},
-    # engine-only states the design never showed — keep the page from breaking:
-    "built":    {"color": "var(--steel)", "soft": "var(--steel-soft)", "icon": "ready",    "label": "built"},
-    "failed":   {"color": "var(--block)", "soft": "var(--block-soft)", "icon": "blocked",  "label": "failed"},
+_STATE_META = {
+    "done":     {"color": "var(--green)", "soft": "var(--green-soft)", "badge": "check",    "word": "PASSED"},
+    "built":    {"color": "var(--green)", "soft": "var(--green-soft)", "badge": "check",    "word": "BUILT"},
+    "building": {"color": "var(--amber)", "soft": "var(--amber-soft)", "badge": "building", "word": "RUNNING"},
+    "ready":    {"color": "var(--steel)", "soft": "var(--steel-soft)", "badge": "play",     "word": "QUEUED"},
+    "blocked":  {"color": "var(--block)", "soft": "var(--block-soft)", "badge": "blocked",  "word": "BLOCKED"},
+    "failed":   {"color": "var(--block)", "soft": "var(--block-soft)", "badge": "blocked",  "word": "FAILED"},
 }
 
-# binder.status -> the kind used to colour its card / stage label
-_BINDER_KIND = {"merged": "done", "in_flight": "building", "not_started": "ready"}
-_STAGE_LABEL = {"merged": "merged into main", "in_flight": "building", "not_started": "not started"}
+# ---------------------------------------------------------------------------
+# Phase metadata — one per timeline phase. Ported from the design's `bm`. `now`
+# pulses (the breathing node). past/now/next/later map from the engine's binder
+# statuses (see the Vue `phases` computed): merged->past, in_flight->now,
+# the first not_started->next, the rest->later.
+# ---------------------------------------------------------------------------
 
-# oracle.type -> icon name (the design only carries these; fall back to unit)
-_ORACLE_ICON = {"unit": "unit", "integration": "integration", "e2e": "e2e",
-                "smoke": "smoke", "visual": "visual", "opt-out": "smoke"}
+_PHASE_META = {
+    "past":  {"color": "var(--green)", "mark": "check",     "phrase": "delivered", "pulse": False},
+    "now":   {"color": "var(--amber)", "mark": "send",      "phrase": "in flight", "pulse": True},
+    "next":  {"color": "var(--steel)", "mark": "clock",     "phrase": "up next",   "pulse": False},
+    "later": {"color": "var(--block)", "mark": "hourglass", "phrase": "waiting",   "pulse": False},
+}
 
-# the work-item groups, in display order (engine-only states tail the list)
-_GROUP_DEFS = [
-    {"key": "building", "label": "Building", "sub": "in a worktree now"},
-    {"key": "ready", "label": "Ready", "sub": "queued · dependencies met"},
-    {"key": "blocked", "label": "Blocked", "sub": "waiting on a dependency"},
-    {"key": "done", "label": "Done", "sub": "merged into the branch"},
-    {"key": "built", "label": "Built", "sub": "committed · awaiting merge"},
-    {"key": "failed", "label": "Failed", "sub": "the check did not pass"},
+# phase key -> the row label + meaning shown in the timeline header
+_PHASE_DEFS = [
+    {"key": "past",  "label": "Delivered", "meaning": "merged to main & shipped"},
+    {"key": "now",   "label": "Now",       "meaning": "being delivered right now"},
+    {"key": "next",  "label": "Next",      "meaning": "ready to start once picked up"},
+    {"key": "later", "label": "Later",     "meaning": "waiting its turn in the sequence"},
 ]
 
-# the state-word order for the legend (the four the design shows)
-_LEGEND_KEYS = ["done", "building", "ready", "blocked"]
+# oracle.type -> icon name (the design carries these; fall back to unit)
+_ORACLE_ICON = {"unit": "unit", "integration": "integration", "e2e": "e2e",
+                "smoke": "unit", "visual": "visual", "opt-out": "unit"}
 
 
 # ---------------------------------------------------------------------------
@@ -173,29 +188,28 @@ _LEGEND_KEYS = ["done", "building", "ready", "blocked"]
 # ---------------------------------------------------------------------------
 
 _DARK_VARS = (
-    "--bg:#14161e;--panel:#1f2530;--panel-2:#191e27;--line:rgba(255,255,255,0.07);"
-    "--ink:#e8e5dd;--mut:#8b8f9a;--amber:#d9a94a;--amber-soft:rgba(217,169,74,0.13);"
-    "--green:#74a583;--green-soft:rgba(116,165,131,0.13);--steel:#8e96a8;"
-    "--steel-soft:rgba(142,150,168,0.14);--block:#c2876a;--block-soft:rgba(194,135,106,0.13);"
-    "--star:#d9b455;--banner:linear-gradient(180deg,#ddae50,#cf9e3e);--banner-ink:#352809;"
-    "--chip:rgba(0,0,0,0.22);--live:#74a583;"
+    "--bg:#14161e;--panel:#1c2230;--line:rgba(255,255,255,0.08);"
+    "--tree:rgba(255,255,255,0.16);--ink:#e8e5dd;--mut:#8b8f9a;--on-accent:#171a22;"
+    "--amber:#e0b257;--amber-soft:rgba(224,178,87,0.17);--green:#79ad88;"
+    "--green-soft:rgba(121,173,136,0.17);--steel:#93a0bc;--steel-soft:rgba(147,160,188,0.18);"
+    "--block:#d4926f;--block-soft:rgba(212,146,111,0.17);--star:#e2bd58;"
+    "--chip:rgba(255,255,255,0.07);--live:#79ad88;"
 )
 _LIGHT_VARS = (
-    "--bg:#efece4;--panel:#ffffff;--panel-2:#f6f3ec;--line:rgba(40,30,10,0.12);"
-    "--ink:#2a2d36;--mut:#797d88;--amber:#b1832c;--amber-soft:rgba(177,131,44,0.12);"
-    "--green:#4e885c;--green-soft:rgba(78,136,92,0.12);--steel:#5e6985;"
-    "--steel-soft:rgba(94,105,133,0.12);--block:#a9633f;--block-soft:rgba(169,99,63,0.12);"
-    "--star:#b8902c;--banner:linear-gradient(180deg,#e7c25f,#dcb24a);--banner-ink:#3c2d0b;"
-    "--chip:rgba(0,0,0,0.06);--live:#4e885c;"
+    "--bg:#efece4;--panel:#ffffff;--line:rgba(40,30,10,0.12);"
+    "--tree:rgba(40,30,10,0.18);--ink:#2a2d36;--mut:#797d88;--on-accent:#ffffff;"
+    "--amber:#bc8a2b;--amber-soft:rgba(188,138,43,0.15);--green:#4e8a58;"
+    "--green-soft:rgba(78,138,88,0.15);--steel:#5c6986;--steel-soft:rgba(92,105,134,0.15);"
+    "--block:#aa6238;--block-soft:rgba(170,98,56,0.15);--star:#b8902c;"
+    "--chip:rgba(40,30,10,0.06);--live:#4e8a58;"
 )
 
 
 # ---------------------------------------------------------------------------
 # CSS — "Karta Watch". The two design themes as custom properties; dark default,
-# light via ?theme=light. Both via data-theme AND prefers-color-scheme. Sharp
-# corners, terminal feel, system font stack (NO remote fonts). The component
-# styles that used to be inline Python strings now live here as real classes —
-# this is where the maintenance complexity drops.
+# light via ?theme=light. Both via data-theme AND prefers-color-scheme. The
+# design's inline styles are ported here as real classes (the same values), with
+# the five design keyframes. System font stack — NO remote fonts.
 # ---------------------------------------------------------------------------
 
 _CSS = ("""
@@ -219,218 +233,162 @@ body{
   min-height:100vh;
 }
 .mono{ font-family:var(--mono); }
-.wrap{ width:100%; max-width:1020px; display:flex; flex-direction:column; gap:16px; }
-main{ display:flex; flex-direction:column; gap:16px; }
 
 @keyframes karta-spin{ to{ transform:rotate(360deg); } }
-@keyframes karta-fade{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:none; } }
+@keyframes karta-fade{ from{ opacity:0; transform:translateY(3px); } to{ opacity:1; transform:none; } }
+@keyframes karta-pulse{ 0%{ box-shadow:0 0 0 0 var(--amber-soft); } 70%,100%{ box-shadow:0 0 0 8px transparent; } }
+@keyframes karta-shimmer{ 0%{ background-position:-140px 0; } 100%{ background-position:240px 0; } }
+@keyframes karta-breathe{ 0%,100%{ opacity:.5; } 50%{ opacity:1; } }
+
+.wrap{ width:100%; max-width:780px; display:flex; flex-direction:column; gap:16px; }
 
 /* header */
 .top{ display:flex; justify-content:space-between; align-items:center; gap:16px; }
 .brand{ display:flex; align-items:center; gap:13px; min-width:0; }
-.brand__mascot{ width:40px; height:40px; border-radius:0; flex:none; display:block; }
+.brand__mascot{ width:40px; height:40px; flex:none; display:block; }
 .brand__txt{ min-width:0; }
-.brand__row{ display:flex; align-items:center; gap:10px; }
 .brand__word{ font-family:var(--mono); font-weight:700; font-size:21px; letter-spacing:-0.5px; }
-.brand__branch{
-  display:flex; align-items:center; gap:5px;
-  font-family:var(--mono); font-size:12px;
-  padding:3px 9px 3px 7px; border-radius:0;
-  background:var(--chip); color:var(--mut);
-}
-.brand__sub{ font-size:12px; color:var(--mut); margin-top:2px; }
-.live{
-  display:flex; align-items:center; gap:8px; flex:none;
-  color:var(--mut); font-family:var(--sans); font-size:12px; padding:4px;
-}
-.live--recon{ color:var(--amber); }
-.timer{
-  width:18px; height:18px; border-radius:0; border:1.5px solid var(--line);
-  position:relative; overflow:hidden; flex:none; display:block;
-}
-.timer__sweep{
-  position:absolute; inset:-1px; border-radius:0; display:block;
-  background:conic-gradient(from 0deg, var(--live) 0deg, var(--live) 35deg, transparent 150deg, transparent 360deg);
-  animation:karta-spin 2.6s linear infinite;
-}
-.timer--recon .timer__sweep{
-  background:conic-gradient(from 0deg, var(--amber) 0deg, var(--amber) 35deg, transparent 150deg, transparent 360deg);
-  animation:karta-spin .85s linear infinite;
-}
-.timer__hole{ position:absolute; inset:4px; border-radius:0; background:var(--bg); display:block; }
-
-/* header right cluster: hide-done + theme toggles, then the live indicator */
-.hdr-right{ display:flex; align-items:center; gap:10px; flex:none; }
-.hctl{
-  display:inline-flex; align-items:center; gap:6px;
-  font-family:var(--mono); font-size:12px; line-height:1;
-  padding:6px 9px; border-radius:0; border:1px solid var(--line);
-  background:transparent; color:var(--mut); cursor:pointer;
-  transition:color .2s, border-color .2s, background .2s;
-}
-.hctl:hover{ color:var(--ink); border-color:var(--mut); }
-.hctl--icon{ padding:6px; }
-.hctl--on{
-  border-color:var(--amber); background:var(--amber-soft); color:var(--amber);
-}
-.hctl--on:hover{ color:var(--amber); border-color:var(--amber); }
-.hctl__l{ display:inline-block; }
-
-/* hero — YOU RUN NEXT */
-.hero{ background:var(--banner); color:var(--banner-ink); border-radius:0; padding:15px 20px; }
-.hero__row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-.hero__glyph{
-  display:flex; align-items:center; justify-content:center;
-  width:22px; height:22px; border-radius:0; background:rgba(0,0,0,0.16); flex:none;
-}
-.hero__label{ font-family:var(--mono); font-weight:700; font-size:11px; letter-spacing:2px; }
-.hero__cmd{
-  font-family:var(--mono); font-weight:600; font-size:14px;
-  padding:6px 12px; border-radius:0; background:rgba(0,0,0,0.16);
-}
-.hero__dollar{ opacity:.5; }
-.hero__copy{
+.brand__live{
+  font-size:12px; color:var(--mut); margin-top:1px;
   display:flex; align-items:center; gap:6px;
-  font-family:var(--mono); font-size:12px; padding:6px 11px;
-  border-radius:0; border:none; cursor:pointer;
-  background:rgba(255,255,255,0.32); color:var(--banner-ink);
 }
-.hero__copy:hover{ background:rgba(255,255,255,0.45); }
-.hero__aside{ font-size:11.5px; opacity:.7; }
-.hero__sub{ font-size:12.5px; margin-top:9px; opacity:.82; }
+.brand__dot{
+  width:6px; height:6px; border-radius:50%; background:var(--live);
+  animation:karta-breathe 2s ease-in-out infinite; flex:none;
+}
+.brand__live--recon{ color:var(--amber); }
+.brand__live--recon .brand__dot{ background:var(--amber); }
+.hdr-right{ display:flex; align-items:center; gap:2px; flex:none; }
+.hctl{
+  display:flex; align-items:center; gap:6px; border:none; cursor:pointer;
+  background:transparent; font-family:var(--sans); font-size:12px;
+  color:var(--mut); padding:6px 8px;
+}
+.hctl--on{ color:var(--ink); }
+.hctl__icon{ display:flex; }
 
-/* panels */
-.panel{ background:var(--panel); border:1px solid var(--line); border-radius:0; padding:20px 22px 22px; }
-.panel--wi{ padding-bottom:18px; }
-.panel__head{ display:flex; align-items:center; gap:9px; margin-bottom:3px; }
-.panel__hicon{ display:flex; }
-.panel__title{ font-weight:600; font-size:15px; }
-.panel__meta{ font-size:12px; color:var(--mut); }
-.panel__chip{
-  margin-left:auto; font-size:12px; padding:4px 11px;
-  background:var(--chip); color:var(--mut);
+/* delivery panel */
+.panel{ background:var(--panel); border:1px solid var(--line); padding:16px 22px 6px; }
+.panel__head{ display:flex; align-items:baseline; gap:10px; margin-bottom:4px; }
+.panel__kicker{
+  font-size:10.5px; letter-spacing:2px; font-weight:700;
+  color:var(--amber); text-transform:uppercase;
 }
-.panel__lede{ font-size:12.5px; color:var(--mut); margin:0 0 20px; }
-.panel__lede--wi{ margin-bottom:18px; line-height:1.65; }
-.panel__lede b{ color:var(--ink); font-weight:600; }
+.panel__name{ font-family:var(--mono); font-weight:700; font-size:16px; }
+.panel__summary{ margin-left:auto; font-size:11.5px; color:var(--mut); }
+.panel__note{ font-size:11.5px; color:var(--mut); margin-bottom:14px; }
 
-/* binders panel: card column + star endpoint */
-.bgrid{ display:flex; align-items:stretch; }
-.bcol{ flex:1; display:flex; flex-direction:column; gap:11px; min-width:0; }
-.bhidden{ font-family:var(--mono); font-size:11px; color:var(--mut); margin:0; opacity:.85; }
-.brow{ display:flex; align-items:center; gap:11px; }
-.brow__ord{
-  flex:none; width:14px; text-align:center;
-  font-family:var(--mono); font-size:11px; color:var(--mut);
-}
-.bcard{
-  flex:1; min-width:0; border:1px solid var(--line); padding:11px 13px;
-  background:var(--panel-2); cursor:pointer; text-decoration:none; color:inherit;
-  transition:background .2s, border-color .2s; display:block;
-}
-.bcard:hover{ border-color:var(--mut); }
-.bcard--sel{ border-color:var(--amber); background:var(--amber-soft); }
-.bcard__top{ display:flex; align-items:center; gap:9px; }
-.bcard__icon{ display:flex; flex:none; }
-.bcard__slug{
-  font-family:var(--mono); font-weight:600; font-size:13px;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0;
-}
-.bcard__state{ display:flex; flex:none; }
-.bcard__stage{ font-size:10.5px; color:var(--mut); flex:none; }
-.bcard__bot{ display:flex; align-items:center; gap:9px; margin-top:9px; }
-.bcard__bar{
-  flex:1; height:6px; background:var(--panel-2); overflow:hidden;
-  border:1px solid var(--line); display:block;
-}
-.bcard__fill{ display:block; height:100%; transition:width .5s ease; }
-.bcard__count{ font-size:11px; color:var(--mut); flex:none; }
-.brow__conn{ flex:none; width:26px; height:2px; background:var(--mut); opacity:.35; }
-.bstar{ flex:none; width:104px; position:relative; display:flex; align-items:center; justify-content:center; }
-.bstar__line{ position:absolute; left:0; top:16px; bottom:16px; width:2px; background:var(--mut); opacity:.35; }
-.bstar__node{
-  position:relative; z-index:1; display:flex; flex-direction:column;
-  align-items:center; gap:5px; background:var(--panel); padding:10px 6px;
-}
-.bstar__icon{ display:flex; }
-.bstar__name{ font-family:var(--mono); font-size:12px; font-weight:600; }
-.bstar__sub{
-  font-size:9.5px; color:var(--mut); text-transform:uppercase;
-  letter-spacing:0.5px; text-align:center; line-height:1.4;
-}
-
-/* work items panel */
-.branch-chip{
-  display:inline-flex; align-items:center; gap:5px;
-  font-family:var(--mono); font-weight:600; color:var(--ink);
-  padding:2px 8px; background:var(--steel-soft); border:1px solid var(--line);
-  vertical-align:middle;
-}
-.branch-chip .mono{ font-weight:600; }
-.wgroups{ display:flex; flex-direction:column; gap:18px; }
-.wgroup__head{ display:flex; align-items:center; gap:8px; margin-bottom:11px; }
-.wgroup__icon{ display:flex; }
-.wgroup__label{ font-weight:600; font-size:13px; }
-.wgroup__sub{ font-size:11.5px; color:var(--mut); }
-.wgroup__count{ font-size:11.5px; color:var(--mut); margin-left:auto; }
-.wgrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(290px, 1fr)); gap:11px; }
-
-.wi{
-  display:flex; border:1px solid var(--line); background:var(--panel-2);
-  cursor:pointer; min-width:0;
-}
-.wi__rail{
-  flex:none; width:46px; align-self:stretch;
+/* a phase row: tree gutter + content */
+.phase{ display:flex; }
+.phase__gutter{ position:relative; flex:none; width:50px; }
+.phase__line{ position:absolute; left:24px; width:2px; background:var(--tree); }
+.phase__mark{
+  position:absolute; left:25px; top:23px; transform:translate(-50%,-50%);
   display:flex; align-items:center; justify-content:center;
-  border-right:1px solid var(--line);
+  width:26px; height:26px; border:2px solid; z-index:1;
 }
-.wi__body{ flex:1; min-width:0; padding:12px 14px; display:block; }
-.wi__head{ display:flex; align-items:baseline; gap:10px; }
-.wi__id{ font-family:var(--mono); font-weight:600; font-size:13.5px; }
-.wi__word{
-  margin-left:auto; font-family:var(--mono); font-size:10px; font-weight:600;
-  letter-spacing:1.5px; flex:none;
-}
-.wi__desc{ display:block; font-size:12.5px; color:var(--ink); opacity:.78; margin-top:4px; }
-.wi__oracle{ display:flex; align-items:center; gap:6px; margin-top:9px; color:var(--mut); flex-wrap:wrap; }
-.wi__oracle-i{ display:flex; }
-.wi__oracle-l{ font-size:11.5px; }
-.wi__dep{ display:flex; align-items:center; gap:4px; font-size:11px; color:var(--block); margin-left:4px; }
-.wi__detail{
-  display:block; margin-top:11px; padding-top:10px; border-top:1px solid var(--line);
-  animation:karta-fade .2s ease;
-}
-.wi__assert{ display:block; font-size:11.5px; color:var(--ink); opacity:.82; }
-.wi__assert-k{ color:var(--mut); }
-.wi__cmd{
-  display:block; font-family:var(--mono); font-size:11px; color:var(--mut);
-  margin-top:7px; padding:6px 9px; background:var(--bg);
-}
-.wempty{ font-size:12.5px; color:var(--mut); margin:0; }
+.phase__mark--pulse{ animation:karta-pulse 1.8s ease-out infinite; }
+.phase__body{ flex:1; min-width:0; padding:12px 0 16px; }
+.phase__head{ display:flex; align-items:baseline; gap:9px; margin-bottom:11px; }
+.phase__label{ font-size:11.5px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase; }
+.phase__meaning{ font-size:11.5px; color:var(--mut); }
+.phase__count{ margin-left:auto; font-family:var(--mono); font-size:11px; }
+.phase__empty{ font-size:12px; color:var(--mut); opacity:.5; }
+.phase__binders{ display:flex; flex-direction:column; gap:11px; }
 
-/* legend */
-.legend{
-  display:flex; flex-wrap:wrap; gap:7px 16px; margin-top:20px;
-  padding-top:14px; border-top:1px solid var(--line);
+/* a binder card */
+.binder{ border:1px solid var(--line); background:var(--bg); }
+.binder--now{ border-color:var(--amber); }
+.binder__header{ display:flex; align-items:center; gap:10px; padding:11px 14px; cursor:pointer; }
+.binder__header--now{ background:var(--amber-soft); }
+.binder__icon{
+  display:flex; align-items:center; justify-content:center; width:25px; height:25px;
+  flex:none; color:var(--on-accent);
 }
-.leg{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--mut); }
-.leg__i{ display:flex; }
+.binder__slug{ font-family:var(--mono); font-weight:700; font-size:14.5px; }
+.binder__tag{
+  display:flex; align-items:center; gap:4px; font-size:10px; color:var(--mut);
+  padding:2px 6px; background:var(--chip);
+}
+.binder__spacer{ margin-left:auto; flex:none; }
+.binder__pct{ font-family:var(--mono); font-size:12px; color:var(--ink); flex:none; }
+.binder__count{ font-family:var(--mono); font-size:11px; color:var(--mut); flex:none; }
+.binder__caret{ display:flex; flex:none; color:var(--mut); transition:transform .15s; }
+.binder__caret--open{ transform:rotate(180deg); }
+.binder__bar{ height:4px; background:var(--line); }
+.binder__fill{ height:100%; transition:width .55s ease; }
+.binder__waves{ padding:13px 14px; }
 
-/* empty state */
-.empty{ text-align:center; }
-.empty__mascot{ width:80px; height:80px; opacity:.85; margin-bottom:6px; }
+/* the queue summary line */
+.queue{ display:flex; align-items:center; gap:7px; font-size:10.5px; color:var(--mut); margin-bottom:12px; }
+.queue__icon{ display:flex; }
+
+/* THEN separator between waves */
+.then{ display:flex; align-items:center; gap:8px; margin:11px 0; color:var(--mut); }
+.then__stub{ width:18px; height:1px; background:var(--line); }
+.then__icon{ display:flex; }
+.then__word{ font-family:var(--mono); font-size:9px; letter-spacing:2px; }
+.then__rule{ flex:1; height:1px; background:var(--line); }
+
+/* the "N runs in parallel" label within a multi-item wave */
+.parallel{
+  display:flex; align-items:center; gap:6px; font-size:9px; color:var(--mut);
+  letter-spacing:1px; text-transform:uppercase; margin-bottom:7px;
+}
+.parallel__icon{ display:flex; }
+.wave{ display:grid; gap:8px; margin-bottom:2px; }
+
+/* a work item */
+.item{ border:1px solid var(--line); background:var(--panel); cursor:pointer; }
+.item--building{ border-color:var(--amber); }
+.item__row{ display:flex; align-items:center; gap:9px; padding:9px 11px; min-width:0; }
+.item__badge{
+  display:flex; align-items:center; justify-content:center; width:22px; height:22px;
+  flex:none; color:var(--on-accent);
+}
+.item__main{ min-width:0; flex:1; }
+.item__top{ display:flex; align-items:center; gap:7px; }
+.item__id{ font-family:var(--mono); font-weight:600; font-size:12.5px; }
+.item__oracle{ display:flex; align-items:center; gap:3px; font-size:9px; color:var(--mut); }
+.item__desc{
+  font-size:10.5px; color:var(--ink); opacity:.6;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;
+}
+.item__chip{ display:flex; align-items:center; gap:4px; flex:none; padding:2px 7px; }
+.item__word{ font-family:var(--mono); font-size:8.5px; font-weight:700; letter-spacing:0.5px; }
+
+/* the indeterminate shimmer for a RUNNING item */
+.item__shim{ height:3px; background:var(--line); margin:0 11px 8px 42px; overflow:hidden; }
+.item__shim-fill{
+  height:100%;
+  background:linear-gradient(90deg,var(--amber) 0 60%,rgba(255,255,255,.45) 80%,var(--amber));
+  background-size:160px 100%; animation:karta-shimmer 1.1s linear infinite;
+}
+
+/* the expanded oracle detail */
+.item__detail{
+  margin:0 11px 10px 42px; padding:9px 11px; background:var(--bg);
+  border:1px solid var(--line); animation:karta-fade .2s ease;
+}
+.item__detail-head{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--mut); }
+.item__assert{ font-size:11.5px; color:var(--ink); margin-top:6px; }
+.item__cmd{ font-family:var(--mono); font-size:11px; color:var(--mut); margin-top:7px; }
+.item__dep{ display:flex; align-items:center; gap:5px; font-size:11px; color:var(--block); margin-top:7px; }
+
+/* empty state (no binders) */
+.empty{ text-align:center; padding:28px 0 34px; }
+.empty__mascot{ width:64px; height:64px; opacity:.85; margin-bottom:6px; }
 .empty__title{ font-weight:600; font-size:15px; margin-bottom:6px; }
 .empty__hint{ font-size:12.5px; color:var(--mut); margin:0 auto; max-width:46ch; }
 
 /* footer */
-.foot{ text-align:center; font-size:12.5px; color:var(--mut); padding-top:4px; }
+.foot{ text-align:center; font-size:12.5px; color:var(--mut); padding-top:2px; }
 
 @media (prefers-reduced-motion: reduce){
-  .timer__sweep, .karta-spin{ animation:none !important; }
+  .phase__mark--pulse, .item__shim-fill, .brand__dot{ animation:none !important; }
 }
-@media (max-width:640px){
-  .wgrid{ grid-template-columns:1fr; }
-  .bstar{ width:80px; }
+@media (max-width:560px){
+  .wave{ grid-template-columns:1fr !important; }
 }
 """
         .replace("__DARK__", _DARK_VARS)
@@ -442,22 +400,22 @@ main{ display:flex; flex-direction:column; gap:16px; }
 # The Vue 3 app. Uses the vendored global build (Vue.createApp), an in-document
 # template (no build step). Mounts from the inlined initial state for a correct
 # first paint, then — only off file:// — polls /state.json every 2.6s as the live
-# mirror. All interaction (binder selection, expand, copy, theme) is client state,
-# so none of it needs a server round-trip. This is the complexity win: the design
-# is one declarative template instead of ~500 lines of Python string assembly.
+# mirror. The layout is the design's vertical phase timeline: a Delivery panel of
+# phases (Delivered/Now/Next/Later), each listing its binders as expandable cards,
+# each binder expanding to its waves (parallel-within, serial-between). All
+# interaction (open/expand, show-delivered, theme) is client state — no round-trip.
+# The `phases`/`wavesOf`/`vars()` logic is ported from the design's renderVals().
 # ---------------------------------------------------------------------------
 
 _APP_JS = """
 const { createApp } = Vue;
 
-// icon path data + state metadata, handed over from Python verbatim.
+// icon path data + state/phase metadata, handed over from Python verbatim.
 const ICONS = __ICONS__;
-const STATE_META = __STATE__;
-const BINDER_KIND = __BINDER_KIND__;
-const STAGE_LABEL = __STAGE_LABEL__;
+const STATE_META = __STATE_META__;
+const PHASE_META = __PHASE_META__;
+const PHASE_DEFS = __PHASE_DEFS__;
 const ORACLE_ICON = __ORACLE_ICON__;
-const GROUP_DEFS = __GROUP_DEFS__;
-const LEGEND_KEYS = __LEGEND_KEYS__;
 const POLL_MS = 2600;
 
 // A render helper for inline <svg> icons, matching the design's icon() factory.
@@ -481,148 +439,171 @@ const Icon = {
       fill: this.fill, stroke: this.color, 'stroke-width': this.sw,
       'stroke-linecap': 'round', 'stroke-linejoin': 'round',
       class: this.spin ? 'karta-spin' : null,
-      style: 'display:block;' + (this.spin ? 'animation:karta-spin 2.6s linear infinite;' : ''),
+      style: 'display:block;' + (this.spin ? 'animation:karta-spin 1s linear infinite;' : ''),
     }, kids);
   },
 };
 
 function metaFor(status) { return STATE_META[status] || STATE_META.ready; }
-function doneCount(b) { return b.items.done; }
+function doneCountOf(b) { return b.items.detail.filter(d => d.status === 'done' || d.status === 'built').length; }
+
+// Group a binder's items into dependency-depth waves — ported verbatim from the
+// design's wavesOf(). depth = longest dep chain; items at one depth = one wave;
+// waves serial between, parallel within. Each item's `deps` is _enrich's depends_on.
+function wavesOf(items) {
+  const byId = {}; items.forEach(i => byId[i.id] = i);
+  const depth = {}, seen = {};
+  const calc = (it) => {
+    if (depth[it.id] != null) return depth[it.id];
+    if (seen[it.id]) return 0; seen[it.id] = true;
+    let d = 0; (it.deps || []).forEach(dep => { if (byId[dep]) d = Math.max(d, 1 + calc(byId[dep])); });
+    return depth[it.id] = d;
+  };
+  items.forEach(calc);
+  let maxD = 0; items.forEach(i => { if (depth[i.id] > maxD) maxD = depth[i.id]; });
+  const out = [];
+  for (let d = 0; d <= maxD; d++) { const w = items.filter(i => depth[i.id] === d); if (w.length) out.push(w); }
+  return out;
+}
 
 const app = createApp({
   components: { Icon },
   data() {
     return {
       state: window.__KARTA_STATE__ || { binders: [], repo: { default_branch: 'main' }, next_action: {} },
-      viewSlug: null,
-      expanded: {},      // work-item id -> bool
-      copied: false,
+      expanded: {},      // 'slug/itemId' -> bool
+      open: {},          // slug -> bool (binder open/collapse; default-open for `now`)
       reconnecting: false,
-      hideDone: localStorage.getItem('karta-hide-done') === '1',
+      polls: 0,
+      showDelivered: localStorage.getItem('karta-show-delivered') === '1',
       theme: localStorage.getItem('karta-theme')
         || window.__KARTA_THEME__ || 'dark',
-      _copyTimer: null,
       _pollTimer: null,
     };
   },
   computed: {
     binders() { return this.state.binders || []; },
     hasBinders() { return this.binders.length > 0; },
-    activeBinder() { return this.binders.find(b => b.status === 'in_flight') || null; },
-    // the integration-branch chip / header slug
-    activeSlug() {
-      return this.activeBinder ? this.activeBinder.slug
-        : (this.state.repo && this.state.repo.default_branch) || 'main';
+
+    // common `-`-split slug prefix across binders (fallback to the first slug).
+    deliveryName() {
+      const seq = this.binders;
+      if (!seq.length) return 'delivery';
+      const parts = seq.map(b => b.slug.split('-'));
+      const f = parts[0]; const pre = [];
+      for (let i = 0; i < f.length; i++) {
+        if (parts.every(s => s[i] === f[i])) pre.push(f[i]); else break;
+      }
+      return pre.join('-') || seq[0].slug || 'delivery';
     },
-    // the binder whose work items show: explicit selection, else in_flight, else first
-    viewedSlug() {
-      if (!this.binders.length) return '';
-      const slugs = this.binders.map(b => b.slug);
-      if (this.viewSlug && slugs.includes(this.viewSlug)) return this.viewSlug;
-      const active = this.activeBinder;
-      return active ? active.slug : this.binders[0].slug;
+    deliverySummary() {
+      const seq = this.binders;
+      const shipped = seq.filter(b => b.status === 'merged').length;
+      return seq.length + (seq.length === 1 ? ' binder · ' : ' binders · ') + shipped + ' delivered';
     },
-    viewedBinder() {
-      return this.binders.find(b => b.slug === this.viewedSlug) || this.binders[0] || null;
-    },
-    nextAction() { return this.state.next_action || {}; },
-    binderCards() {
-      return this.binders.map((b, i) => {
-        const kind = BINDER_KIND[b.status] || 'ready';
-        const m = metaFor(kind);
-        const total = b.items.total;
-        const done = doneCount(b);
-        return {
-          slug: b.slug, ordinal: i + 1, status: b.status, color: m.color, icon: m.icon,
-          stateIcon: m.icon, spin: kind === 'building',
-          stage: STAGE_LABEL[b.status] || 'not started',
-          pct: total ? Math.round(done / total * 100) : 0,
-          countLabel: done + '/' + total + ' items',
-          selected: b.slug === this.viewedSlug,
-        };
+
+    // classify each binder into a phase over the engine's derived order:
+    //   merged -> past, in_flight -> now, first not_started -> next, rest -> later.
+    tagged() {
+      let nextSeen = false;
+      return this.binders.map(b => {
+        let key;
+        if (b.status === 'merged') key = 'past';
+        else if (b.status === 'in_flight') key = 'now';
+        else if (!nextSeen) { nextSeen = true; key = 'next'; }
+        else key = 'later';
+        return { b, key };
       });
     },
-    // the cards actually rendered in the column: drop merged ones when hiding
-    // completed binders. Ordinals stay tied to full-sequence position (no renumber).
-    visibleBinderCards() {
-      if (!this.hideDone) return this.binderCards;
-      return this.binderCards.filter(c => c.status !== 'merged');
-    },
-    // how many merged binders exist (for the collapsed-hint count).
-    mergedBinderCount() {
-      return this.binderCards.filter(c => c.status === 'merged').length;
-    },
-    // how many cards are actually hidden right now (0 unless hiding is on).
-    hiddenBinderCount() {
-      return this.hideDone ? this.mergedBinderCount : 0;
-    },
-    groups() {
-      const vb = this.viewedBinder;
-      const items = vb ? vb.items.detail : [];
-      return GROUP_DEFS.map(g => {
-        const members = items.filter(d => d.status === g.key);
-        const m = metaFor(g.key);
+
+    // the phase rows actually rendered (Delivered hidden unless showDelivered).
+    phases() {
+      let defs = PHASE_DEFS;
+      if (!this.showDelivered) defs = defs.filter(d => d.key !== 'past');
+      return defs.map((d, i) => {
+        const recs = this.tagged.filter(t => t.key === d.key);
+        const meta = PHASE_META[d.key];
         return {
-          key: g.key, label: g.label, sub: g.sub,
-          color: m.color, icon: m.icon, spin: g.key === 'building',
-          count: members.length + (members.length === 1 ? ' item' : ' items'),
-          items: members,
+          key: d.key, label: d.label, meaning: d.meaning, color: meta.color,
+          mark: meta.mark, pulse: !!meta.pulse,
+          // the tree line: first row starts at the node, last row ends at it.
+          lineStyle: i === 0 ? 'top:23px; bottom:0;'
+            : (i === defs.length - 1 ? 'top:0; height:23px;' : 'top:0; bottom:0;'),
+          count: recs.length + (recs.length === 1 ? ' binder' : ' binders'),
+          empty: recs.length === 0,
+          binders: recs.map(t => this.mkBinder(t.b, t.key)),
         };
-      }).filter(g => g.items.length > 0);
-    },
-    legend() {
-      return LEGEND_KEYS.map(k => {
-        const m = metaFor(k);
-        return { key: k, label: m.label, color: m.color, icon: m.icon };
       });
     },
   },
   methods: {
     metaFor,
-    railStyle(d) {
-      const m = metaFor(d.status);
-      return 'background:' + m.soft + ';color:' + m.color + ';';
+    doneCountOf,
+    oracleIconName(it) { return ORACLE_ICON[it.oracle] || 'unit'; },
+    isOpen(slug, key) {
+      return (this.open[slug] !== undefined) ? this.open[slug] : (key === 'now');
     },
-    oracleIconName(d) { return ORACLE_ICON[d.oracle] || 'unit'; },
-    oracleLabel(d) { return (d.oracle || 'unit') + ' check'; },
-    blockedDep(d) {
-      const arr = d.blocked_by || d.deps || [];
-      return arr.length ? arr[0] : '';
+    toggleBinder(slug, key) {
+      const cur = this.isOpen(slug, key);
+      this.open = Object.assign({}, this.open, { [slug]: !cur });
     },
-    isExpanded(d) { return !!this.expanded[d.id]; },
-    toggle(d) { this.expanded = Object.assign({}, this.expanded, { [d.id]: !this.expanded[d.id] }); },
-    selectBinder(slug) { this.viewSlug = slug; },
-    toggleHideDone() {
-      this.hideDone = !this.hideDone;
-      try { localStorage.setItem('karta-hide-done', this.hideDone ? '1' : '0'); } catch (e) {}
+    isExpanded(slug, id) { return !!this.expanded[slug + '/' + id]; },
+    toggleItem(slug, id) {
+      const k = slug + '/' + id;
+      this.expanded = Object.assign({}, this.expanded, { [k]: !this.expanded[k] });
+    },
+
+    // Build the view-model for one binder card (header + waves), mirroring the
+    // design's mkBinder(). Items come from the enriched engine detail.
+    mkBinder(b, key) {
+      const meta = PHASE_META[key];
+      const items = b.items.detail;
+      const waveArr = wavesOf(items);
+      const dc = doneCountOf(b), tot = b.items.total;
+      const waves = waveArr.map((w, wi) => ({
+        serial: wi > 0,
+        showParallel: w.length > 1,
+        parallelLabel: w.length + ' runs in parallel',
+        multi: w.length > 1,
+        items: w.map(it => {
+          const im = metaFor(it.status);
+          const dep = (it.deps && it.deps[it.deps.length - 1]) || '';
+          return {
+            id: it.id, desc: it.desc || it.id, color: im.color, soft: im.soft,
+            badge: im.badge, word: im.word, building: it.status === 'building',
+            oracle: it.oracle || 'unit', oracleIcon: this.oracleIconName(it),
+            assert: it.assert, cmd: it.cmd, hasDep: !!dep, depName: dep,
+          };
+        }),
+      }));
+      const shape = waveArr.map(w => w.length).join(' → ');
+      let queueLabel = tot + (tot === 1 ? ' run' : ' runs');
+      if (waveArr.length === 1 && tot > 1) queueLabel += ' · all run in parallel';
+      else if (waveArr.length > 1) queueLabel += ' · ' + shape + ' — parallel within a step, serial between';
+      const pct = tot ? Math.round(dc / tot * 100) : 0;
+      return {
+        slug: b.slug, key, color: meta.color, mark: meta.mark,
+        now: key === 'now',
+        pctLabel: pct + '%', fillW: pct + '%',
+        countLabel: dc + '/' + tot + (tot === 1 ? ' run' : ' runs'),
+        open: this.isOpen(b.slug, key),
+        queueLabel, waves,
+      };
+    },
+
+    toggleShowDelivered() {
+      this.showDelivered = !this.showDelivered;
+      try { localStorage.setItem('karta-show-delivered', this.showDelivered ? '1' : '0'); } catch (e) {}
     },
     toggleTheme() {
       this.theme = this.theme === 'dark' ? 'light' : 'dark';
       document.documentElement.dataset.theme = this.theme;
       try { localStorage.setItem('karta-theme', this.theme); } catch (e) {}
     },
-    copyCmd() {
-      const cmd = this.nextAction.command || '';
-      const done = () => {
-        this.copied = true;
-        clearTimeout(this._copyTimer);
-        this._copyTimer = setTimeout(() => { this.copied = false; }, 1300);
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(cmd).then(done, () => {});
-      } else {
-        try {
-          const ta = document.createElement('textarea');
-          ta.value = cmd; document.body.appendChild(ta);
-          ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-          done();
-        } catch (e) {}
-      }
-    },
     poll() {
       fetch('/state.json', { cache: 'no-store' })
         .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-        .then(s => { this.state = s; this.reconnecting = false; })
+        .then(s => { this.state = s; this.reconnecting = false; this.polls += 1; })
         .catch(() => { this.reconnecting = true; });
     },
   },
@@ -638,7 +619,6 @@ const app = createApp({
   },
   beforeUnmount() {
     clearInterval(this._pollTimer);
-    clearTimeout(this._copyTimer);
   },
   template: `
 <div class="wrap">
@@ -646,171 +626,126 @@ const app = createApp({
     <div class="brand">
       <img class="brand__mascot" src="/assets/mascot.png" alt="karta mascot" width="40" height="40">
       <div class="brand__txt">
-        <div class="brand__row">
-          <span class="brand__word">karta</span>
-          <span class="brand__branch"><icon name="branch" :size="12" color="var(--mut)" />{{ activeSlug }}</span>
+        <span class="brand__word">karta</span>
+        <div class="brand__live" :class="{ 'brand__live--recon': reconnecting }">
+          <span class="brand__dot" aria-hidden="true"></span>{{ reconnecting ? 'reconnecting… — read-only' : 'live from git — read-only' }}
         </div>
-        <div class="brand__sub">watching a binder sequence build · read-only mirror of git</div>
       </div>
     </div>
     <div class="hdr-right">
-      <button type="button" class="hctl" :class="{ 'hctl--on': hideDone }"
-        @click="toggleHideDone"
-        :title="hideDone ? 'show all binders' : 'hide completed binders'"
-        :aria-pressed="hideDone ? 'true' : 'false'">
-        <icon :name="hideDone ? 'eye-off' : 'eye'" :size="14" color="currentColor" />
-        <span class="hctl__l">{{ hideDone ? 'show all' : 'hide done' }}</span>
+      <button type="button" class="hctl" :class="{ 'hctl--on': showDelivered }"
+        @click="toggleShowDelivered"
+        title="show delivered binders"
+        :aria-pressed="showDelivered ? 'true' : 'false'">
+        <span class="hctl__icon"><icon :name="showDelivered ? 'checksquare' : 'square'" :size="15" :color="showDelivered ? 'var(--ink)' : 'var(--mut)'" /></span>show delivered
       </button>
       <button type="button" class="hctl hctl--icon"
         @click="toggleTheme"
-        :title="theme === 'dark' ? 'switch to light mode' : 'switch to dark mode'"
+        title="toggle light / dark"
         aria-label="toggle theme">
-        <icon :name="theme === 'dark' ? 'sun' : 'moon'" :size="14" color="currentColor" />
+        <icon :name="theme === 'dark' ? 'sun' : 'moon'" :size="15" color="var(--mut)" />
       </button>
-      <div class="live" :class="{ 'live--recon': reconnecting }">
-        <span class="timer" :class="{ 'timer--recon': reconnecting }" aria-hidden="true">
-          <span class="timer__sweep"></span>
-          <span class="timer__hole"></span>
-        </span>
-        <span class="live__label">{{ reconnecting ? 'reconnecting…' : 'live' }}</span>
-      </div>
     </div>
   </header>
 
-  <main>
-    <template v-if="hasBinders">
-      <!-- hero: YOU RUN NEXT -->
-      <section class="hero" aria-label="next action">
-        <div class="hero__row">
-          <span class="hero__glyph" aria-hidden="true"><icon name="play" :size="11" color="var(--banner-ink)" fill="var(--banner-ink)" /></span>
-          <span class="hero__label">YOU RUN NEXT</span>
-          <template v-if="nextAction.command">
-            <span class="hero__cmd"><span class="hero__dollar">$ </span>{{ nextAction.command }}</span>
-            <button type="button" class="hero__copy" @click="copyCmd" aria-label="copy command">
-              <icon name="copy" :size="13" color="var(--banner-ink)" />
-              <span class="hero__copy-l">{{ copied ? 'copied' : 'copy' }}</span>
-            </button>
-            <span class="hero__aside">run this in your terminal — karta only watches</span>
-          </template>
-          <span v-else class="hero__aside">nothing to run — karta only watches</span>
-        </div>
-        <div class="hero__sub">{{ nextAction.human }}</div>
-      </section>
+  <template v-if="hasBinders">
+    <section class="panel" aria-label="delivery">
+      <div class="panel__head">
+        <span class="panel__kicker">Delivery</span>
+        <span class="panel__name">{{ deliveryName }}</span>
+        <span class="panel__summary">{{ deliverySummary }}</span>
+      </div>
+      <div class="panel__note">Each binder ships to main on its own. Phases track where each binder
+        stands; inside one, the runs are its parallel + serial queue.</div>
 
-      <!-- binders: card column ending at the star -->
-      <section class="panel" aria-label="binders">
-        <div class="panel__head">
-          <span class="panel__hicon" style="color:var(--amber)"><icon name="binder" :size="17" color="var(--amber)" /></span>
-          <span class="panel__title">Binders</span>
-          <span class="panel__meta">{{ binders.length }} · each merges to main on its own</span>
-        </div>
-        <p class="panel__lede">A <b>binder</b> is one self-sufficient stage. Each merges into
-          <span class="mono">main</span> independently — the numbering is karta's
-          <b>suggested</b> order, not a dependency.</p>
-        <div class="bgrid">
-          <div class="bcol">
-            <div class="brow" v-for="c in visibleBinderCards" :key="c.slug">
-              <span class="brow__ord">{{ c.ordinal }}</span>
-              <a class="bcard" :class="{ 'bcard--sel': c.selected }" href="#" @click.prevent="selectBinder(c.slug)">
-                <div class="bcard__top">
-                  <span class="bcard__icon" :style="{ color: c.color }"><icon name="binder" :size="17" :color="c.color" /></span>
-                  <span class="bcard__slug">{{ c.slug }}</span>
-                  <span class="bcard__state" :style="{ color: c.color }"><icon :name="c.stateIcon" :size="15" :color="c.color" :spin="c.spin" /></span>
-                  <span class="bcard__stage">{{ c.stage }}</span>
-                </div>
-                <div class="bcard__bot">
-                  <span class="bcard__bar"><span class="bcard__fill" :style="{ width: c.pct + '%', background: c.color }"></span></span>
-                  <span class="bcard__count">{{ c.countLabel }}</span>
-                </div>
-              </a>
-              <span class="brow__conn" aria-hidden="true"></span>
-            </div>
-            <p class="bhidden" v-if="hiddenBinderCount > 0">+ {{ hiddenBinderCount }} completed binder{{ hiddenBinderCount === 1 ? '' : 's' }} hidden</p>
-          </div>
-          <div class="bstar">
-            <span class="bstar__line" aria-hidden="true"></span>
-            <div class="bstar__node">
-              <span class="bstar__icon"><icon name="star" :size="20" color="var(--star)" fill="var(--star)" /></span>
-              <span class="bstar__name">main</span>
-              <span class="bstar__sub">integration<br>branch</span>
-            </div>
+      <div class="phase" v-for="p in phases" :key="p.key">
+        <div class="phase__gutter">
+          <div class="phase__line" :style="p.lineStyle"></div>
+          <div class="phase__mark" :class="{ 'phase__mark--pulse': p.pulse }"
+            :style="{ borderColor: p.color, background: p.pulse ? p.color : 'var(--panel)', color: p.pulse ? 'var(--on-accent)' : p.color }">
+            <icon :name="p.mark" :size="13" :color="p.pulse ? 'var(--on-accent)' : p.color" />
           </div>
         </div>
-      </section>
+        <div class="phase__body">
+          <div class="phase__head">
+            <span class="phase__label" :style="{ color: p.color }">{{ p.label }}</span>
+            <span class="phase__meaning">{{ p.meaning }}</span>
+            <span class="phase__count" :style="{ color: p.color }">{{ p.count }}</span>
+          </div>
 
-      <!-- work items: grouped by state -->
-      <section class="panel panel--wi" aria-label="work items">
-        <div class="panel__head">
-          <span class="panel__hicon" style="color:var(--steel)"><icon name="branch" :size="16" color="var(--steel)" /></span>
-          <span class="panel__title">Work items</span>
-          <span class="panel__chip" v-if="viewedBinder">{{ doneCountOf(viewedBinder) }}/{{ viewedBinder.items.total }} done</span>
-        </div>
-        <p class="panel__lede panel__lede--wi">Each <b>work item</b> builds in its own git
-          worktree, passes its check, then integrates into
-          <span class="branch-chip"><icon name="branch" :size="12" color="var(--steel)" /><span class="mono">{{ viewedSlug }}</span></span>
-          — the binder's integration branch, which then merges into <span class="mono">main</span>.</p>
+          <div class="phase__empty" v-if="p.empty">— no binders</div>
 
-        <div class="wgroups">
-          <div class="wgroup" v-for="g in groups" :key="g.key">
-            <div class="wgroup__head">
-              <span class="wgroup__icon" :style="{ color: g.color }"><icon :name="g.icon" :size="16" :color="g.color" :spin="g.spin" /></span>
-              <span class="wgroup__label">{{ g.label }}</span>
-              <span class="wgroup__sub">{{ g.sub }}</span>
-              <span class="wgroup__count">{{ g.count }}</span>
-            </div>
-            <div class="wgrid">
-              <div class="wi" v-for="d in g.items" :key="d.id" @click="toggle(d)">
-                <span class="wi__rail" :style="railStyle(d)">
-                  <icon :name="metaFor(d.status).icon" :size="18" :color="metaFor(d.status).color" :spin="d.status === 'building'" />
-                </span>
-                <span class="wi__body">
-                  <span class="wi__head">
-                    <span class="wi__id">{{ d.id }}</span>
-                    <span class="wi__word" :style="{ color: metaFor(d.status).color }">{{ metaFor(d.status).label.toUpperCase() }}</span>
-                  </span>
-                  <span class="wi__desc">{{ d.desc || d.id }}</span>
-                  <span class="wi__oracle">
-                    <span class="wi__oracle-i"><icon :name="oracleIconName(d)" :size="14" color="var(--mut)" /></span>
-                    <span class="wi__oracle-l">{{ oracleLabel(d) }}</span>
-                    <span class="wi__dep" v-if="d.status === 'blocked'">
-                      <icon name="blocked" :size="12" color="var(--block)" /><span>waiting on {{ blockedDep(d) }}</span>
-                    </span>
-                  </span>
-                  <span class="wi__detail" v-if="isExpanded(d) && (d.assert || d.cmd)">
-                    <span class="wi__assert" v-if="d.assert"><span class="wi__assert-k">must pass — </span>{{ d.assert }}</span>
-                    <span class="wi__cmd" v-if="d.cmd">$ {{ d.cmd }}</span>
-                  </span>
-                </span>
+          <div class="phase__binders">
+            <div class="binder" :class="{ 'binder--now': b.now }" v-for="b in p.binders" :key="b.slug">
+              <div class="binder__header" :class="{ 'binder__header--now': b.now }" @click="toggleBinder(b.slug, b.key)">
+                <span class="binder__icon" :style="{ background: b.color }"><icon :name="b.mark" :size="13" color="var(--on-accent)" /></span>
+                <span class="binder__slug">{{ b.slug }}</span>
+                <span class="binder__tag"><icon name="branch" :size="10" color="var(--mut)" />binder</span>
+                <span class="binder__spacer"></span>
+                <span class="binder__pct">{{ b.pctLabel }}</span>
+                <span class="binder__count">{{ b.countLabel }}</span>
+                <span class="binder__caret" :class="{ 'binder__caret--open': b.open }"><icon name="arrowdown" :size="13" color="var(--mut)" /></span>
+              </div>
+              <div class="binder__bar"><div class="binder__fill" :style="{ width: b.fillW, background: b.color }"></div></div>
+
+              <div class="binder__waves" v-if="b.open">
+                <div class="queue"><span class="queue__icon"><icon name="fork" :size="12" color="var(--mut)" /></span><span>{{ b.queueLabel }}</span></div>
+
+                <template v-for="(w, wi) in b.waves" :key="wi">
+                  <div class="then" v-if="w.serial">
+                    <span class="then__stub"></span>
+                    <span class="then__icon"><icon name="arrowdown" :size="11" color="var(--mut)" /></span>
+                    <span class="then__word">THEN</span>
+                    <span class="then__rule"></span>
+                  </div>
+                  <div class="parallel" v-if="w.showParallel">
+                    <span class="parallel__icon"><icon name="fork" :size="11" color="var(--mut)" /></span>{{ w.parallelLabel }}
+                  </div>
+                  <div class="wave" :style="{ gridTemplateColumns: w.multi ? 'repeat(auto-fit,minmax(205px,1fr))' : '1fr' }">
+                    <div class="item" :class="{ 'item--building': it.building }" v-for="it in w.items" :key="it.id" @click="toggleItem(b.slug, it.id)">
+                      <div class="item__row">
+                        <span class="item__badge" :style="{ background: it.color }"><icon :name="it.badge" :size="12" color="var(--on-accent)" :spin="it.building" /></span>
+                        <div class="item__main">
+                          <div class="item__top">
+                            <span class="item__id">{{ it.id }}</span>
+                            <span class="item__oracle"><icon :name="it.oracleIcon" :size="10" color="var(--mut)" />{{ it.oracle }}</span>
+                          </div>
+                          <div class="item__desc">{{ it.desc }}</div>
+                        </div>
+                        <span class="item__chip" :style="{ background: it.soft }">
+                          <icon :name="it.badge" :size="10" :color="it.color" :spin="it.building" /><span class="item__word" :style="{ color: it.color }">{{ it.word }}</span>
+                        </span>
+                      </div>
+                      <div class="item__shim" v-if="it.building"><div class="item__shim-fill"></div></div>
+                      <div class="item__detail" v-if="isExpanded(b.slug, it.id)">
+                        <div class="item__detail-head"><icon :name="it.oracleIcon" :size="12" color="var(--mut)" /><span>passes its {{ it.oracle }} check when:</span></div>
+                        <div class="item__assert" v-if="it.assert">{{ it.assert }}</div>
+                        <div class="item__cmd" v-if="it.cmd">$ {{ it.cmd }}</div>
+                        <div class="item__dep" v-if="it.hasDep"><icon name="arrowdown" :size="12" color="var(--block)" />runs after {{ it.depName }} passes</div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
-          <p class="wempty" v-if="!groups.length">no work items in this binder.</p>
         </div>
-
-        <div class="legend">
-          <span class="leg" v-for="L in legend" :key="L.key">
-            <span class="leg__i" :style="{ color: L.color }"><icon :name="L.icon" :size="14" :color="L.color" /></span>{{ L.label }}
-          </span>
-        </div>
-      </section>
-    </template>
-
-    <!-- empty state -->
-    <section class="panel empty" aria-label="no binders" v-else>
-      <img class="empty__mascot" src="/assets/mascot.png" alt="" width="80" height="80">
-      <div class="empty__title">no binders planned yet</div>
-      <p class="empty__hint">add a binder under <span class="mono">.karta/binders/</span>
-        (try <span class="mono">karta-plan</span>) and the sequence will chart itself here.</p>
+      </div>
     </section>
-  </main>
+  </template>
+
+  <!-- empty state -->
+  <section class="panel empty" aria-label="no binders" v-else>
+    <img class="empty__mascot" src="/assets/mascot.png" alt="" width="64" height="64">
+    <div class="empty__title">no binders planned yet</div>
+    <p class="empty__hint">add a binder under <span class="mono">.karta/binders/</span>
+      (try <span class="mono">karta-plan</span>) and the delivery will chart itself here.</p>
+  </section>
 
   <footer class="foot">karta · derived fresh from git every poll · read-only</footer>
 </div>
 `,
 });
-
-// expose a tiny helper used in-template for the done chip
-app.config.globalProperties.doneCountOf = doneCount;
 
 app.mount('#app');
 """.strip()
@@ -825,12 +760,10 @@ def _build_app_js(state: dict) -> str:
     return (
         _APP_JS
         .replace("__ICONS__", json.dumps(_ICONS, separators=(",", ":")))
-        .replace("__STATE__", json.dumps(_STATE, separators=(",", ":")))
-        .replace("__BINDER_KIND__", json.dumps(_BINDER_KIND, separators=(",", ":")))
-        .replace("__STAGE_LABEL__", json.dumps(_STAGE_LABEL, separators=(",", ":")))
+        .replace("__STATE_META__", json.dumps(_STATE_META, separators=(",", ":")))
+        .replace("__PHASE_META__", json.dumps(_PHASE_META, separators=(",", ":")))
+        .replace("__PHASE_DEFS__", json.dumps(_PHASE_DEFS, separators=(",", ":")))
         .replace("__ORACLE_ICON__", json.dumps(_ORACLE_ICON, separators=(",", ":")))
-        .replace("__GROUP_DEFS__", json.dumps(_GROUP_DEFS, separators=(",", ":")))
-        .replace("__LEGEND_KEYS__", json.dumps(_LEGEND_KEYS, separators=(",", ":")))
     )
 
 
@@ -989,6 +922,9 @@ def _run_self_test() -> int:
             (f"{theme}: vendors Vue same-origin", "/assets/vendor/vue.global.prod.js" in h),
             (f"{theme}: carries the binder + next action", "s-edit" in h and "karta-deliver" in h),
             (f"{theme}: carries joined oracle detail", "integration" in h and "documented" in h),
+            (f"{theme}: persists the toggle keys", "karta-show-delivered" in h and "karta-theme" in h),
+            (f"{theme}: new-design timeline markers", "showDelivered" in h and "Delivered" in h
+                and "Now" in h and "RUNNING" in h),
         ]
     failures = sum(1 for _, ok in checks if not ok)
     for name, ok in checks:
