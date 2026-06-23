@@ -29,10 +29,25 @@ All state is git-native and recomputed on every call — there is no stored curs
 
   It prints the route across binders, the current binder's item frontier, and `▶ next: <command>`.
 
-- **As JSON.** `--json` emits the full state (Phase 2's live status page consumes this).
+- **As JSON.** `--json` emits the full state — the live page (below) consumes this.
 
 - **The footer.** `--footer --binder <slug>` prints the one-line nudge that `karta-deliver` and
   `karta-build` show at the tail of a run.
+
+## Watch — the live page
+
+For a glanceable, always-fresh view, serve **Karta Watch** — a read-only browser mirror of git
+that re-derives the same state on every poll:
+
+  `uv run --script skills/karta-status/scripts/serve_status.py --root <repo> --port 8765`
+
+Then open `http://127.0.0.1:8765/` (forward the port on a remote host). It shows the binder
+sequence as a card column ending at the `★ main` integration star, the current binder's work items
+grouped by state — each with its oracle and a click-to-expand assertion + command — and the single
+next action as a copy-pasteable banner. The page polls `/state.json` to stay live; `?theme=light`
+or `?theme=dark` forces a theme; `--key <token>` gates it behind `?key=`. It is **self-contained**
+(a vendored Vue, system fonts, no CDN, no build step) and **zero-dependency** stdlib Python.
+`serve_status.py --self-test` checks the page's invariants.
 
 This skill is read-only and stack-agnostic. It never starts a build, never merges, never writes a
 binder. It only tells you where you are and what is next.
