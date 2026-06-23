@@ -34,6 +34,13 @@ INSTALL_SKILLS = INSTALL_PLUGIN / "skills"
 INSTALL_CODEX_PLUGIN = INSTALL_PLUGIN / ".codex-plugin"
 
 
+def _is_artifact(p: Path) -> bool:
+    """Build artifacts that must never be mirrored or compared — running the skills'
+    scripts leaves `__pycache__/*.pyc` in their dirs (gitignored), which would
+    otherwise drift between canonical and mirror and trip --check."""
+    return "__pycache__" in p.parts or p.suffix in (".pyc", ".pyo")
+
+
 def skill_dirs() -> list[Path]:
     return sorted(p.parent for p in SKILLS.glob("*/SKILL.md"))
 
@@ -45,7 +52,7 @@ def expected() -> tuple[dict[Path, bytes], set[str]]:
     for sd in skill_dirs():
         names.add(sd.name)
         for f in sd.rglob("*"):
-            if f.is_file():
+            if f.is_file() and not _is_artifact(f):
                 files[MIRROR / sd.name / f.relative_to(sd)] = f.read_bytes()
     return files, names
 
@@ -58,13 +65,13 @@ def expected_install_projection() -> dict[Path, bytes]:
             files[INSTALL_CODEX_PLUGIN / f.relative_to(CODEX_PLUGIN)] = f.read_bytes()
     for sd in skill_dirs():
         for f in sd.rglob("*"):
-            if f.is_file():
+            if f.is_file() and not _is_artifact(f):
                 files[INSTALL_SKILLS / sd.name / f.relative_to(sd)] = f.read_bytes()
     return files
 
 
 def mirror_files() -> list[Path]:
-    return [p for p in MIRROR.rglob("*") if p.is_file()] if MIRROR.exists() else []
+    return [p for p in MIRROR.rglob("*") if p.is_file() and not _is_artifact(p)] if MIRROR.exists() else []
 
 
 def mirror_skill_names() -> set[str]:
@@ -76,7 +83,7 @@ def install_projection_files() -> list[Path]:
     files: list[Path] = []
     for root in roots:
         if root.exists():
-            files.extend(p for p in root.rglob("*") if p.is_file())
+            files.extend(p for p in root.rglob("*") if p.is_file() and not _is_artifact(p))
     return files
 
 
