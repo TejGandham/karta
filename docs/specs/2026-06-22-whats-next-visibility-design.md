@@ -364,3 +364,7 @@ added there on commit.
 - **ETA / burndown prediction and historical analytics.** The page shows the present truth, not
   forecasts.
 - **Multi-repo or cross-checkout aggregation.** One repo, one `.karta/`.
+- **Karta Watch page variants (backlog).** Two treatments present in the Claude Design source but
+  deferred from the first live page: the compact **rail** sequence layout (a horizontal
+  progress-bar strip as an alternate to the binder cards) and a **click-to-pause** toggle on the
+  live timer. Recorded here so they aren't lost; not scheduled.
