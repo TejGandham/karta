@@ -385,7 +385,16 @@ body{
 .foot{ text-align:center; font-size:12.5px; color:var(--mut); padding-top:2px; }
 
 @media (prefers-reduced-motion: reduce){
-  .phase__mark--pulse, .item__shim-fill, .brand__dot{ animation:none !important; }
+  /* Remove genuine motion — the rotating badge spinner and the expanding-ring
+     pulse. But "a run is live" is essential status, so the live signals must not
+     just freeze: degrade them to a gentle opacity breathe (a fade, not movement,
+     which is reduced-motion-safe). The status line keeps reading as alive. */
+  .phase__mark--pulse, .karta-spin{ animation:none !important; }
+  .item__shim-fill{
+    background:var(--amber) !important; background-size:auto !important;
+    animation:karta-breathe 2s ease-in-out infinite !important;
+  }
+  .brand__dot{ animation:karta-breathe 2s ease-in-out infinite; }
 }
 @media (max-width:560px){
   .wave{ grid-template-columns:1fr !important; }
@@ -925,6 +934,9 @@ def _run_self_test() -> int:
             (f"{theme}: persists the toggle keys", "karta-show-delivered" in h and "karta-theme" in h),
             (f"{theme}: new-design timeline markers", "showDelivered" in h and "Delivered" in h
                 and "Now" in h and "RUNNING" in h),
+            (f"{theme}: reduced-motion keeps the status line live (breathes, not frozen)",
+                "prefers-reduced-motion" in h
+                and "animation:karta-breathe 2s ease-in-out infinite !important" in h),
         ]
     failures = sum(1 for _, ok in checks if not ok)
     for name, ok in checks:
