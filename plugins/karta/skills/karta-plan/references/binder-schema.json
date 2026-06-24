@@ -3,13 +3,23 @@
   "$id": "https://github.com/TejGandham/karta/binder-schema.json",
   "title": "karta binder",
   "type": "object",
-  "required": ["slug", "motivation", "scope", "work_items"],
+  "required": ["slug", "title", "summary", "motivation", "scope", "work_items"],
   "additionalProperties": false,
   "properties": {
     "slug": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]*$",
       "description": "kebab-case; names the integration branch karta/<slug>/integration and the wave tags"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "human-friendly binder name shown as the Karta Watch headline, e.g. 'Tag editing for notes' (the slug stays the technical id)"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "plain-language goal, 1-2 sentences: what this binder delivers and why it matters; reader-facing (distinct from 'motivation', the terse internal why)"
     },
     "motivation": { "type": "string", "minLength": 1 },
     "scope": {
@@ -90,11 +100,16 @@
   "$defs": {
     "workItem": {
       "type": "object",
-      "required": ["id", "title", "oracle"],
+      "required": ["id", "title", "summary", "oracle"],
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
         "title": { "type": "string", "minLength": 1 },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "plain-language goal, one sentence: what this work item does"
+        },
         "estimate": { "enum": ["S", "M", "L"] },
         "depends_on": { "type": "array", "items": { "type": "string" }, "default": [] },
         "design_reference": { "type": "string", "description": "view/route id, or the literal 'none'" },

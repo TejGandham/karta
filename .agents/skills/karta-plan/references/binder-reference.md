@@ -13,6 +13,8 @@ When emitting a set, karta-plan stores the cross-binder dependency as an `after`
 | Field | Type | Required | Meaning |
 |-|-|-|-|
 | `slug` | string (kebab-case) | yes | Names the integration branch (`karta/<slug>/integration`) and all wave tags |
+| `title` | string | yes | Human-friendly binder name; the Karta Watch headline (the slug stays the technical id) |
+| `summary` | string | yes | Plain-language goal, 1-2 sentences: what this binder delivers and why it matters; reader-facing, distinct from `motivation` (the terse internal why) |
 | `after` | string[] | no | Predecessor binder slugs; the only stored cross-binder dependency; run order is derived from these edges (topo sort), never stored separately; dangling ref = warning, cycle = error |
 | `motivation` | string | yes | One-sentence reason this binder exists |
 | `scope.included` | string[] | yes | Areas of the codebase in scope |
@@ -53,7 +55,8 @@ When the repo declares a version manager, the `env_contract.command` or an oracl
 | Field | Type | Required | Meaning |
 |-|-|-|-|
 | `id` | string (kebab-case) | yes | Unique identifier; referenced by `depends_on` in other items |
-| `title` | string | yes | Short human label for the work item |
+| `title` | string | yes | Short human label for the work item; the Karta Watch headline (the id stays the technical anchor) |
+| `summary` | string | yes | Plain-language goal, one sentence: what this item does |
 | `estimate` | `S` \| `M` \| `L` | no | Size estimate |
 | `depends_on` | string[] | no | IDs of items that must land before this one starts |
 | `design_reference` | string | no | View or route ID from the design source, or the literal `none` |

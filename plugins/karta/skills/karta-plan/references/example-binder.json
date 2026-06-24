@@ -1,5 +1,7 @@
 {
   "slug": "notifications-redesign",
+  "title": "Notifications center",
+  "summary": "Replace the old alerts panel with a notifications center people can open, read, and clear.",
   "motivation": "Replace the legacy alerts panel with the new notifications center from the design prototype.",
   "scope": {
     "included": ["notifications list view", "notification detail pane", "mark-all-read action"],
@@ -20,6 +22,7 @@
     {
       "id": "shell",
       "title": "Notifications center shell + routing",
+      "summary": "Stand up the notifications center page and its route so the rest of the work has a place to live.",
       "estimate": "M",
       "depends_on": [],
       "design_reference": "none",
@@ -30,6 +33,7 @@
     {
       "id": "list-view",
       "title": "Notifications list view",
+      "summary": "Show the list of notifications, matching the design.",
       "estimate": "L",
       "depends_on": ["shell"],
       "design_reference": "notifications-list",
@@ -39,6 +43,7 @@
     {
       "id": "schema-migration",
       "title": "Add read_at column to notifications table",
+      "summary": "Add a read_at column so a notification can be marked as read.",
       "estimate": "S",
       "depends_on": [],
       "serialize": true,

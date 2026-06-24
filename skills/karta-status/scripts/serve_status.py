@@ -52,23 +52,28 @@ ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
 def _enrich(state: dict, binders: list[dict]) -> dict:
     """Join each derived item (status only) back to its binder `work_item` so the
-    renderers get desc/oracle/assert/cmd/deps. `derive_state` stays untouched."""
+    renderers get title/summary/oracle/assert/cmd/deps, and carry the binder's own
+    human title/summary/motivation onto each derived binder. `derive_state` stays
+    untouched."""
     wi_by_slug: dict[str, dict] = {}
     for b in binders:
         wi_by_slug[b["slug"]] = {it["id"]: it for it in b.get("work_items", [])}
+    by_slug = {b["slug"]: b for b in binders}
 
     for ob in state["binders"]:
+        src = by_slug.get(ob["slug"], {})
+        ob["title"] = src.get("title")
+        ob["summary"] = src.get("summary")
+        ob["motivation"] = src.get("motivation")
         items = wi_by_slug.get(ob["slug"], {})
         for d in ob["items"]["detail"]:
             wi = items.get(d["id"], {})
             oracle = wi.get("oracle", {}) or {}
             # an opt-out oracle is {opt_out: true, reason: ...}; treat type as "opt-out"
-            if oracle.get("opt_out"):
-                otype = "opt-out"
-            else:
-                otype = oracle.get("type", "unit")
+            otype = "opt-out" if oracle.get("opt_out") else oracle.get("type", "unit")
             assertions = oracle.get("assertions") or []
-            d["desc"] = wi.get("title", d["id"])
+            d["title"] = wi.get("title")
+            d["summary"] = wi.get("summary")
             d["oracle"] = otype
             d["assert"] = assertions[0] if assertions else None
             d["cmd"] = oracle.get("command")
@@ -79,8 +84,9 @@ def _enrich(state: dict, binders: list[dict]) -> dict:
 def current_state() -> dict:
     """Recompute the engine state from the CWD's .karta + git. Never cached.
 
-    Returns the engine state with each item enriched (desc/oracle/assert/cmd/deps)
-    by joining back to the binder `work_item` definitions."""
+    Returns the engine state with each item enriched (title/summary/oracle/assert/cmd/deps)
+    and each binder carrying its human title/summary/motivation, by joining back to the
+    binder definitions."""
     binders = karta_next.load_binders()
     facts = karta_next.gather_git_facts(binders, karta_next._default_branch())
     state = karta_next.derive_state(binders, facts)
@@ -228,7 +234,7 @@ body{
   background:var(--bg); color:var(--ink);
   font-family:var(--sans); font-size:15px; line-height:1.5;
   -webkit-font-smoothing:antialiased;
-  padding:28px 24px 40px;
+  padding:36px 34px 56px;
   display:flex; flex-direction:column; align-items:center;
   min-height:100vh;
 }
@@ -240,14 +246,14 @@ body{
 @keyframes karta-shimmer{ 0%{ background-position:-140px 0; } 100%{ background-position:240px 0; } }
 @keyframes karta-breathe{ 0%,100%{ opacity:.5; } 50%{ opacity:1; } }
 
-.wrap{ width:100%; max-width:780px; display:flex; flex-direction:column; gap:16px; }
+.wrap{ width:100%; max-width:1040px; display:flex; flex-direction:column; gap:20px; }
 
 /* header */
 .top{ display:flex; justify-content:space-between; align-items:center; gap:16px; }
 .brand{ display:flex; align-items:center; gap:13px; min-width:0; }
 .brand__mascot{ width:40px; height:40px; flex:none; display:block; }
 .brand__txt{ min-width:0; }
-.brand__word{ font-family:var(--mono); font-weight:700; font-size:21px; letter-spacing:-0.5px; }
+.brand__word{ font-family:var(--mono); font-weight:700; font-size:22px; letter-spacing:-0.5px; }
 .brand__live{
   font-size:12px; color:var(--mut); margin-top:1px;
   display:flex; align-items:center; gap:6px;
@@ -268,15 +274,15 @@ body{
 .hctl__icon{ display:flex; }
 
 /* delivery panel */
-.panel{ background:var(--panel); border:1px solid var(--line); padding:16px 22px 6px; }
+.panel{ background:var(--panel); border:1px solid var(--line); padding:24px 30px 16px; }
 .panel__head{ display:flex; align-items:baseline; gap:10px; margin-bottom:4px; }
 .panel__kicker{
   font-size:10.5px; letter-spacing:2px; font-weight:700;
   color:var(--amber); text-transform:uppercase;
 }
-.panel__name{ font-family:var(--mono); font-weight:700; font-size:16px; }
-.panel__summary{ margin-left:auto; font-size:11.5px; color:var(--mut); }
-.panel__note{ font-size:11.5px; color:var(--mut); margin-bottom:14px; }
+.panel__name{ font-family:var(--mono); font-weight:700; font-size:17px; }
+.panel__summary{ margin-left:auto; font-size:12px; color:var(--mut); }
+.panel__note{ font-size:12.5px; color:var(--mut); line-height:1.5; margin-bottom:18px; }
 
 /* a phase row: tree gutter + content */
 .phase{ display:flex; }
@@ -288,28 +294,29 @@ body{
   width:26px; height:26px; border:2px solid; z-index:1;
 }
 .phase__mark--pulse{ animation:karta-pulse 1.8s ease-out infinite; }
-.phase__body{ flex:1; min-width:0; padding:12px 0 16px; }
-.phase__head{ display:flex; align-items:baseline; gap:9px; margin-bottom:11px; }
+.phase__body{ flex:1; min-width:0; padding:14px 0 22px; }
+.phase__head{ display:flex; align-items:baseline; gap:9px; margin-bottom:14px; }
 .phase__label{ font-size:11.5px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase; }
 .phase__meaning{ font-size:11.5px; color:var(--mut); }
 .phase__count{ margin-left:auto; font-family:var(--mono); font-size:11px; }
 .phase__empty{ font-size:12px; color:var(--mut); opacity:.5; }
-.phase__binders{ display:flex; flex-direction:column; gap:11px; }
+.phase__binders{ display:flex; flex-direction:column; gap:14px; }
 
 /* a binder card */
 .binder{ border:1px solid var(--line); background:var(--bg); }
 .binder--now{ border-color:var(--amber); }
-.binder__header{ display:flex; align-items:center; gap:10px; padding:11px 14px; cursor:pointer; }
+.binder__header{ display:flex; align-items:center; gap:11px; padding:14px 18px; cursor:pointer; }
 .binder__header--now{ background:var(--amber-soft); }
 .binder__icon{
   display:flex; align-items:center; justify-content:center; width:25px; height:25px;
   flex:none; color:var(--on-accent);
 }
-.binder__slug{ font-family:var(--mono); font-weight:700; font-size:14.5px; }
-.binder__tag{
-  display:flex; align-items:center; gap:4px; font-size:10px; color:var(--mut);
-  padding:2px 6px; background:var(--chip);
+.binder__title{ font-weight:600; font-size:15px; }
+.binder__slug{
+  display:flex; align-items:center; gap:4px; font-family:var(--mono); font-size:10px;
+  color:var(--mut); padding:2px 6px; background:var(--chip);
 }
+.binder__blurb{ font-size:13px; line-height:1.6; color:var(--ink); opacity:.82; padding:13px 18px 16px; }
 .binder__spacer{ margin-left:auto; flex:none; }
 .binder__pct{ font-family:var(--mono); font-size:12px; color:var(--ink); flex:none; }
 .binder__count{ font-family:var(--mono); font-size:11px; color:var(--mut); flex:none; }
@@ -317,14 +324,14 @@ body{
 .binder__caret--open{ transform:rotate(180deg); }
 .binder__bar{ height:4px; background:var(--line); }
 .binder__fill{ height:100%; transition:width .55s ease; }
-.binder__waves{ padding:13px 14px; }
+.binder__waves{ padding:18px; }
 
 /* the queue summary line */
-.queue{ display:flex; align-items:center; gap:7px; font-size:10.5px; color:var(--mut); margin-bottom:12px; }
+.queue{ display:flex; align-items:center; gap:7px; font-size:11px; color:var(--mut); margin-bottom:16px; }
 .queue__icon{ display:flex; }
 
 /* THEN separator between waves */
-.then{ display:flex; align-items:center; gap:8px; margin:11px 0; color:var(--mut); }
+.then{ display:flex; align-items:center; gap:9px; margin:15px 0; color:var(--mut); }
 .then__stub{ width:18px; height:1px; background:var(--line); }
 .then__icon{ display:flex; }
 .then__word{ font-family:var(--mono); font-size:9px; letter-spacing:2px; }
@@ -336,26 +343,34 @@ body{
   letter-spacing:1px; text-transform:uppercase; margin-bottom:7px;
 }
 .parallel__icon{ display:flex; }
-.wave{ display:grid; gap:8px; margin-bottom:2px; }
+.wave{ display:grid; gap:11px; margin-bottom:2px; }
 
 /* a work item */
 .item{ border:1px solid var(--line); background:var(--panel); cursor:pointer; }
 .item--building{ border-color:var(--amber); }
-.item__row{ display:flex; align-items:center; gap:9px; padding:9px 11px; min-width:0; }
+.item__row{ display:flex; align-items:flex-start; gap:10px; padding:12px 14px; min-width:0; }
 .item__badge{
   display:flex; align-items:center; justify-content:center; width:22px; height:22px;
   flex:none; color:var(--on-accent);
 }
-.item__main{ min-width:0; flex:1; }
-.item__top{ display:flex; align-items:center; gap:7px; }
-.item__id{ font-family:var(--mono); font-weight:600; font-size:12.5px; }
-.item__oracle{ display:flex; align-items:center; gap:3px; font-size:9px; color:var(--mut); }
-.item__desc{
-  font-size:10.5px; color:var(--ink); opacity:.6;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;
+/* the title owns its own line and wraps cleanly; id/oracle/status drop to a meta
+   row so a wordy title in a narrow parallel column never gets starved to one word
+   per line. */
+.item__main{ min-width:0; flex:1; display:flex; flex-direction:column; gap:7px; }
+.item__title{ font-weight:600; font-size:13px; line-height:1.35; text-wrap:pretty; }
+.item__meta{ display:flex; align-items:center; gap:7px; min-width:0; }
+.item__id{
+  flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  display:flex; align-items:center; font-family:var(--mono); font-size:9.5px;
+  color:var(--mut); padding:1px 5px; background:var(--chip);
 }
-.item__chip{ display:flex; align-items:center; gap:4px; flex:none; padding:2px 7px; }
-.item__word{ font-family:var(--mono); font-size:8.5px; font-weight:700; letter-spacing:0.5px; }
+.item__oracle{ display:flex; align-items:center; gap:3px; flex:none; font-size:9px; color:var(--mut); }
+.item__desc{
+  font-size:11.5px; line-height:1.5; color:var(--ink); opacity:.66;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.item__chip{ display:flex; align-items:center; gap:4px; flex:none; margin-left:auto; padding:2px 7px; }
+.item__word{ font-family:var(--mono); font-size:8.5px; font-weight:700; letter-spacing:0.5px; white-space:nowrap; }
 
 /* the indeterminate shimmer for a RUNNING item */
 .item__shim{ height:3px; background:var(--line); margin:0 11px 8px 42px; overflow:hidden; }
@@ -455,6 +470,12 @@ const Icon = {
 
 function metaFor(status) { return STATE_META[status] || STATE_META.ready; }
 function doneCountOf(b) { return b.items.detail.filter(d => d.status === 'done' || d.status === 'built').length; }
+// fallback headline for a binder authored before it carried a human `title`:
+// turn its kebab slug into Title Case ("note-tags-edit" -> "Note Tags Edit").
+function titleCase(slug) {
+  return String(slug || '').split('-').filter(Boolean)
+    .map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+}
 
 // Group a binder's items into dependency-depth waves — ported verbatim from the
 // design's wavesOf(). depth = longest dep chain; items at one depth = one wave;
@@ -578,7 +599,10 @@ const app = createApp({
           const im = metaFor(it.status);
           const dep = (it.deps && it.deps[it.deps.length - 1]) || '';
           return {
-            id: it.id, desc: it.desc || it.id, color: im.color, soft: im.soft,
+            id: it.id,
+            title: it.title || it.id,
+            summary: it.summary || it.title || '',
+            color: im.color, soft: im.soft,
             badge: im.badge, word: im.word, building: it.status === 'building',
             oracle: it.oracle || 'unit', oracleIcon: this.oracleIconName(it),
             assert: it.assert, cmd: it.cmd, hasDep: !!dep, depName: dep,
@@ -592,6 +616,8 @@ const app = createApp({
       const pct = tot ? Math.round(dc / tot * 100) : 0;
       return {
         slug: b.slug, key, color: meta.color, mark: meta.mark,
+        title: b.title || titleCase(b.slug),
+        blurb: b.summary || b.motivation || '',
         now: key === 'now',
         pctLabel: pct + '%', fillW: pct + '%',
         countLabel: dc + '/' + tot + (tot === 1 ? ' run' : ' runs'),
@@ -688,13 +714,14 @@ const app = createApp({
             <div class="binder" :class="{ 'binder--now': b.now }" v-for="b in p.binders" :key="b.slug">
               <div class="binder__header" :class="{ 'binder__header--now': b.now }" @click="toggleBinder(b.slug, b.key)">
                 <span class="binder__icon" :style="{ background: b.color }"><icon :name="b.mark" :size="13" color="var(--on-accent)" /></span>
-                <span class="binder__slug">{{ b.slug }}</span>
-                <span class="binder__tag"><icon name="branch" :size="10" color="var(--mut)" />binder</span>
+                <span class="binder__title">{{ b.title }}</span>
+                <span class="binder__slug"><icon name="branch" :size="10" color="var(--mut)" />{{ b.slug }}</span>
                 <span class="binder__spacer"></span>
                 <span class="binder__pct">{{ b.pctLabel }}</span>
                 <span class="binder__count">{{ b.countLabel }}</span>
                 <span class="binder__caret" :class="{ 'binder__caret--open': b.open }"><icon name="arrowdown" :size="13" color="var(--mut)" /></span>
               </div>
+              <div class="binder__blurb" v-if="b.blurb">{{ b.blurb }}</div>
               <div class="binder__bar"><div class="binder__fill" :style="{ width: b.fillW, background: b.color }"></div></div>
 
               <div class="binder__waves" v-if="b.open">
@@ -710,20 +737,21 @@ const app = createApp({
                   <div class="parallel" v-if="w.showParallel">
                     <span class="parallel__icon"><icon name="fork" :size="11" color="var(--mut)" /></span>{{ w.parallelLabel }}
                   </div>
-                  <div class="wave" :style="{ gridTemplateColumns: w.multi ? 'repeat(auto-fit,minmax(205px,1fr))' : '1fr' }">
+                  <div class="wave" :style="{ gridTemplateColumns: w.multi ? 'repeat(auto-fit,minmax(260px,1fr))' : '1fr' }">
                     <div class="item" :class="{ 'item--building': it.building }" v-for="it in w.items" :key="it.id" @click="toggleItem(b.slug, it.id)">
                       <div class="item__row">
                         <span class="item__badge" :style="{ background: it.color }"><icon :name="it.badge" :size="12" color="var(--on-accent)" :spin="it.building" /></span>
                         <div class="item__main">
-                          <div class="item__top">
-                            <span class="item__id">{{ it.id }}</span>
+                          <div class="item__title">{{ it.title }}</div>
+                          <div class="item__meta">
+                            <span class="item__id" :title="it.id">{{ it.id }}</span>
                             <span class="item__oracle"><icon :name="it.oracleIcon" :size="10" color="var(--mut)" />{{ it.oracle }}</span>
+                            <span class="item__chip" :style="{ background: it.soft }">
+                              <icon :name="it.badge" :size="10" :color="it.color" :spin="it.building" /><span class="item__word" :style="{ color: it.color }">{{ it.word }}</span>
+                            </span>
                           </div>
-                          <div class="item__desc">{{ it.desc }}</div>
+                          <div class="item__desc" v-if="it.summary">{{ it.summary }}</div>
                         </div>
-                        <span class="item__chip" :style="{ background: it.soft }">
-                          <icon :name="it.badge" :size="10" :color="it.color" :spin="it.building" /><span class="item__word" :style="{ color: it.color }">{{ it.word }}</span>
-                        </span>
                       </div>
                       <div class="item__shim" v-if="it.building"><div class="item__shim-fill"></div></div>
                       <div class="item__detail" v-if="isExpanded(b.slug, it.id)">
@@ -899,14 +927,16 @@ def _run_self_test() -> int:
     def _u(assertion, otype="unit"):
         return {"type": otype, "assertions": [assertion], "command": "npm run lint && npm test"}
     binders = [
-        {"slug": "s-new", "motivation": "x", "scope": {"included": ["x"]},
-         "work_items": [{"id": "a", "title": "A item", "oracle": _u("a is asserted")}]},
-        {"slug": "s-edit", "after": ["s-new"], "motivation": "x", "scope": {"included": ["x"]},
+        {"slug": "s-new", "title": "Brand new thing", "summary": "Add the brand new thing people asked for.",
+         "motivation": "x", "scope": {"included": ["x"]},
+         "work_items": [{"id": "a", "title": "First step", "summary": "Do the first step.", "oracle": _u("a is asserted")}]},
+        {"slug": "s-edit", "title": "Edit the thing", "summary": "Rewire callers onto the new thing.",
+         "after": ["s-new"], "motivation": "x", "scope": {"included": ["x"]},
          "work_items": [
-             {"id": "api", "title": "Wire the API", "oracle": _u("editing sends the request", "integration")},
-             {"id": "doc", "title": "Document it", "depends_on": ["api"], "oracle": _u("usage is documented")}]},
-        {"slug": "s-del", "after": ["s-edit"], "motivation": "x", "scope": {"included": ["x"]},
-         "work_items": [{"id": "r", "title": "Remove legacy", "oracle": _u("legacy is gone")}]},
+             {"id": "api", "title": "Wire the API", "summary": "Send the edit request from the client.", "oracle": _u("editing sends the request", "integration")},
+             {"id": "doc", "title": "Document it", "summary": "Write down how to use it.", "depends_on": ["api"], "oracle": _u("usage is documented")}]},
+        {"slug": "s-del", "motivation": "x", "scope": {"included": ["x"]},
+         "work_items": [{"id": "r", "title": "Remove legacy", "summary": "Delete the dead path.", "oracle": _u("legacy is gone")}]},
     ]
     facts = {"default_branch": "main", "binders": {
         "s-new": {"items": {"a": {"done": True, "done_in_default": True}}},
@@ -937,6 +967,15 @@ def _run_self_test() -> int:
             (f"{theme}: reduced-motion keeps the status line live (breathes, not frozen)",
                 "prefers-reduced-motion" in h
                 and "animation:karta-breathe 2s ease-in-out infinite !important" in h),
+            (f"{theme}: leads with the human binder title", "Edit the thing" in h and "binder__title" in h),
+            (f"{theme}: keeps the slug as a chip, not the headline", "binder__slug" in h and "s-edit" in h),
+            (f"{theme}: renders the plain-language binder summary", "Rewire callers onto the new thing." in h),
+            (f"{theme}: leads with the work-item title + plain-language summary",
+                "Wire the API" in h and "item__title" in h and "Send the edit request from the client." in h),
+            (f"{theme}: a title-less binder actually reaches the page (state carries a null title)",
+                '"title":null' in h),
+            (f"{theme}: the headline fallback is wired to the slug (not just the helper present)",
+                "titleCase(b.slug)" in h),
         ]
     failures = sum(1 for _, ok in checks if not ok)
     for name, ok in checks:

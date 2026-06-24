@@ -276,106 +276,121 @@ def cross_binder_errors(binders: list[dict]) -> tuple[list[str], list[str]]:
 def _run_self_test() -> int:
     valid = json.loads((SCHEMA_PATH.parent / "example-binder.json").read_text())
     cyclic = {
-        "slug": "c", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "c", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "work_items": [
-            {"id": "a", "title": "A", "depends_on": ["b"], "oracle": {"type": "unit"}},
-            {"id": "b", "title": "B", "depends_on": ["a"], "oracle": {"type": "unit"}},
+            {"id": "a", "title": "A", "summary": "s", "depends_on": ["b"], "oracle": {"type": "unit"}},
+            {"id": "b", "title": "B", "summary": "s", "depends_on": ["a"], "oracle": {"type": "unit"}},
         ],
     }
     dangling = {
-        "slug": "d", "motivation": "x", "scope": {"included": ["x"]},
-        "work_items": [{"id": "a", "title": "A", "depends_on": ["ghost"], "oracle": {"type": "unit"}}],
+        "slug": "d", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [{"id": "a", "title": "A", "summary": "s", "depends_on": ["ghost"], "oracle": {"type": "unit"}}],
     }
     no_oracle = {
-        "slug": "n", "motivation": "x", "scope": {"included": ["x"]},
-        "work_items": [{"id": "a", "title": "A"}],
+        "slug": "n", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [{"id": "a", "title": "A", "summary": "s"}],
     }
     optout_no_reason = {
-        "slug": "o", "motivation": "x", "scope": {"included": ["x"]},
-        "work_items": [{"id": "a", "title": "A", "oracle": {"opt_out": True}}],
+        "slug": "o", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": {"opt_out": True}}],
     }
     _u = {"type": "unit"}
     collide = {
-        "slug": "collide", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "collide", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "work_items": [
-            {"id": "a", "title": "A", "touches": ["app/models.py"], "oracle": _u},
-            {"id": "b", "title": "B", "touches": ["app/models.py"], "oracle": _u},
+            {"id": "a", "title": "A", "summary": "s", "touches": ["app/models.py"], "oracle": _u},
+            {"id": "b", "title": "B", "summary": "s", "touches": ["app/models.py"], "oracle": _u},
         ],
     }
     collide_serialize = {
-        "slug": "collide-ser", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "collide-ser", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "work_items": [
-            {"id": "a", "title": "A", "touches": ["app/models.py"], "serialize": True, "oracle": _u},
-            {"id": "b", "title": "B", "touches": ["app/models.py"], "oracle": _u},
+            {"id": "a", "title": "A", "summary": "s", "touches": ["app/models.py"], "serialize": True, "oracle": _u},
+            {"id": "b", "title": "B", "summary": "s", "touches": ["app/models.py"], "oracle": _u},
         ],
     }
     collide_dep = {
-        "slug": "collide-dep", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "collide-dep", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "work_items": [
-            {"id": "a", "title": "A", "touches": ["app/models.py"], "depends_on": ["b"], "oracle": _u},
-            {"id": "b", "title": "B", "touches": ["app/models.py"], "oracle": _u},
+            {"id": "a", "title": "A", "summary": "s", "touches": ["app/models.py"], "depends_on": ["b"], "oracle": _u},
+            {"id": "b", "title": "B", "summary": "s", "touches": ["app/models.py"], "oracle": _u},
         ],
     }
     collide_shared = {
-        "slug": "collide-shared", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "collide-shared", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "work_items": [
-            {"id": "a", "title": "A", "touches": ["db/x.sql"], "shared_resources": ["db/schema"], "oracle": _u},
-            {"id": "b", "title": "B", "touches": ["db/x.sql"], "shared_resources": ["db/schema"], "oracle": _u},
+            {"id": "a", "title": "A", "summary": "s", "touches": ["db/x.sql"], "shared_resources": ["db/schema"], "oracle": _u},
+            {"id": "b", "title": "B", "summary": "s", "touches": ["db/x.sql"], "shared_resources": ["db/schema"], "oracle": _u},
         ],
     }
     collide_glob = {
-        "slug": "collide-glob", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "collide-glob", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "work_items": [
-            {"id": "a", "title": "A", "touches": ["app/*.py"], "oracle": _u},
-            {"id": "b", "title": "B", "touches": ["./app/models.py"], "oracle": _u},
+            {"id": "a", "title": "A", "summary": "s", "touches": ["app/*.py"], "oracle": _u},
+            {"id": "b", "title": "B", "summary": "s", "touches": ["./app/models.py"], "oracle": _u},
         ],
     }
     no_collide = {
-        "slug": "no-collide", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "no-collide", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "work_items": [
-            {"id": "a", "title": "A", "touches": ["app/a.py"], "oracle": _u},
-            {"id": "b", "title": "B", "touches": ["app/b.py"], "oracle": _u},
+            {"id": "a", "title": "A", "summary": "s", "touches": ["app/a.py"], "oracle": _u},
+            {"id": "b", "title": "B", "summary": "s", "touches": ["app/b.py"], "oracle": _u},
         ],
     }
     collide_transitive = {
-        "slug": "collide-trans", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "collide-trans", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "work_items": [
-            {"id": "a", "title": "A", "touches": ["app/x.py"], "depends_on": ["b"], "oracle": _u},
-            {"id": "b", "title": "B", "depends_on": ["c"], "oracle": _u},
-            {"id": "c", "title": "C", "touches": ["app/x.py"], "oracle": _u},
+            {"id": "a", "title": "A", "summary": "s", "touches": ["app/x.py"], "depends_on": ["b"], "oracle": _u},
+            {"id": "b", "title": "B", "summary": "s", "depends_on": ["c"], "oracle": _u},
+            {"id": "c", "title": "C", "summary": "s", "touches": ["app/x.py"], "oracle": _u},
         ],
     }
     sme_valid = {
-        "slug": "sme-ok", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "sme-ok", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "sme": ["angular", "python-fastapi"],
-        "work_items": [{"id": "a", "title": "A", "oracle": _u}],
+        "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}],
     }
     sme_not_array = {
-        "slug": "sme-bad", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "sme-bad", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "sme": "angular",
-        "work_items": [{"id": "a", "title": "A", "oracle": _u}],
+        "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}],
     }
     sme_bad_id = {
-        "slug": "sme-badid", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "sme-badid", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "sme": ["Angular_Expert"],
-        "work_items": [{"id": "a", "title": "A", "oracle": _u}],
+        "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}],
     }
     bad_estimate = {
-        "slug": "bad-est", "motivation": "x", "scope": {"included": ["x"]},
-        "work_items": [{"id": "a", "title": "A", "estimate": "XL", "oracle": _u}],
+        "slug": "bad-est", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [{"id": "a", "title": "A", "summary": "s", "estimate": "XL", "oracle": _u}],
     }
     unknown_top_key = {
-        "slug": "extra", "motivation": "x", "scope": {"included": ["x"]},
-        "work_items": [{"id": "a", "title": "A", "oracle": _u}],
+        "slug": "extra", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}],
         "surprise": True,
     }
     empty_work_items = {
-        "slug": "empty", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "empty", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
         "work_items": [],
     }
     bad_slug = {
-        "slug": "Bad_Slug", "motivation": "x", "scope": {"included": ["x"]},
+        "slug": "Bad_Slug", "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+        "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}],
+    }
+    missing_item_summary = {
+        "slug": "no-item-summary", "title": "T", "summary": "S", "motivation": "x",
+        "scope": {"included": ["x"]},
         "work_items": [{"id": "a", "title": "A", "oracle": _u}],
+    }
+    missing_binder_summary = {
+        "slug": "no-binder-summary", "title": "T", "motivation": "x",
+        "scope": {"included": ["x"]},
+        "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}],
+    }
+    missing_binder_title = {
+        "slug": "no-binder-title", "summary": "S", "motivation": "x",
+        "scope": {"included": ["x"]},
+        "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}],
     }
     cases = [
         ("valid example", valid, True),
@@ -386,6 +401,9 @@ def _run_self_test() -> int:
         ("unknown top-level property", unknown_top_key, False),
         ("empty work_items", empty_work_items, False),
         ("bad slug pattern", bad_slug, False),
+        ("work item missing summary", missing_item_summary, False),
+        ("binder missing summary", missing_binder_summary, False),
+        ("binder missing title", missing_binder_title, False),
         ("cyclic deps", cyclic, False),
         ("dangling dep", dangling, False),
         ("missing oracle", no_oracle, False),
@@ -418,18 +436,18 @@ def _run_self_test() -> int:
     failures += 0 if ok else 1
 
     # cross-binder `after` graph (resolution + acyclicity)
-    cb_new   = {"slug": "s-new",   "motivation": "x", "scope": {"included": ["x"]},
-                "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
-    cb_edit  = {"slug": "s-edit",  "after": ["s-new"], "motivation": "x", "scope": {"included": ["x"]},
-                "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
-    cb_del   = {"slug": "s-del",   "after": ["s-edit"], "motivation": "x", "scope": {"included": ["x"]},
-                "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
-    cb_dangle = {"slug": "s-x",    "after": ["ghost"], "motivation": "x", "scope": {"included": ["x"]},
-                 "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
-    cb_cyc_a = {"slug": "ca", "after": ["cb"], "motivation": "x", "scope": {"included": ["x"]},
-                "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
-    cb_cyc_b = {"slug": "cb", "after": ["ca"], "motivation": "x", "scope": {"included": ["x"]},
-                "work_items": [{"id": "a", "title": "A", "oracle": _u}]}
+    cb_new   = {"slug": "s-new",   "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+                "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}]}
+    cb_edit  = {"slug": "s-edit",  "after": ["s-new"], "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+                "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}]}
+    cb_del   = {"slug": "s-del",   "after": ["s-edit"], "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+                "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}]}
+    cb_dangle = {"slug": "s-x",    "after": ["ghost"], "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+                 "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}]}
+    cb_cyc_a = {"slug": "ca", "after": ["cb"], "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+                "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}]}
+    cb_cyc_b = {"slug": "cb", "after": ["ca"], "title": "T", "summary": "S", "motivation": "x", "scope": {"included": ["x"]},
+                "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}]}
 
     cb_cases = [
         ("clean after-chain", [cb_new, cb_edit, cb_del], [], 0),         # no errors, no warnings

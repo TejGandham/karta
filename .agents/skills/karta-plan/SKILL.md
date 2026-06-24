@@ -125,6 +125,8 @@ Given the intent `<intent>` and the repo survey (`plan:survey`), draft a binder 
 
 For the binder level, populate:
 - `slug` (kebab-case, derived from the feature name)
+- `title` (a friendly binder name a person reads first — not the slug, e.g. "Tag editing for notes")
+- `summary` (the plain-language goal in 1-2 sentences: what this binder delivers and why it matters)
 - `motivation` (one sentence)
 - `scope.included` and `scope.excluded`
 - `design_facts.source` (path to the design, or null) and `design_facts.stack` (from `plan:survey`)
@@ -136,6 +138,7 @@ For the binder level, populate:
 For each work item, set:
 - `id` (kebab-case, unique)
 - `title` (short human label)
+- `summary` (the plain-language goal in one sentence: what this item does)
 - `estimate` (`S`, `M`, or `L`)
 - `depends_on` (IDs of items that must land first)
 - `contract` (the open-shape interface this item exposes or consumes — be specific; vague contracts produce unverifiable oracles)
@@ -143,6 +146,8 @@ For each work item, set:
 - `serialize: true` and `shared_resources` for items that must not run in parallel (e.g. DB migrations, lock-file changes).
 - `touches`: the concrete files/paths each item creates or modifies. This gives the parallelism file-collision and shared-resource gates structured data instead of prose to infer from, and `validate_binder.py` uses it to flag two same-wave items (no dependency edge between them) whose `touches` overlap unless one declares `serialize` or they share a `shared_resources` entry. Populate it for every item; without it the collision gate falls back to unenforced inference.
 - UI-only fields (`design_reference`, `component_map`, `icon_map`, `token_changes`) only when the stack has a design surface. Omit them entirely for backend, CLI, data, and other non-UI stacks.
+
+**Write the human prose in plain language.** The binder `title`/`summary` and each work item's `title`/`summary` are what a person reads in Karta Watch. Write them with the bundled **karta-plainlanguage** standard: lead with the reader, plain words over jargon, active voice, and no kebab-case identifiers in the prose. The `slug` and `id` stay the technical anchors; the `title` and `summary` are for humans — a `title` that just restates the slug, or a `summary` that restates the title, fails this bar.
 
 **Multi-root / polyglot oracle commands.** When the repo has more than one toolchain root (e.g. a Python service at the root plus an Angular app under `frontend/`), do not emit a bare oracle `command` that assumes a single root — `ruff && pytest && npm run lint && ng build` resolves `ng` from nowhere at the root and forces build to improvise a shim. Express each segment through the runner's own root-targeting flag so every tool resolves from its own root with no synthetic structure: `uv run pytest` at the root, `npm --prefix frontend run lint`, `pnpm -C frontend build`, `make -C api test` (see [references/binder-reference.md](references/binder-reference.md), "Execution context"). Set the oracle's `cwd` to the segment's root when the whole command lives in one sub-tree; use the runner's root-targeting when one command must drive several roots. This tool-resolution rule holds for **every** oracle command, single-root included: author a Python tool through the project's venv entrypoint (`uv run ruff`, `uv run pytest`, `uv run mypy`) — never a bare `ruff`/`pytest` that assumes a global install — and a Node tool through its package script/runner (`npm … run`, `npx`). Write the command the way it actually resolves in the project so the build worker never has to rewrite it.
 
@@ -170,6 +175,7 @@ Return the draft binder JSON.
 ---
 
 After the subagent returns, review the draft. Check:
+- The binder has a human `title` and a plain-language `summary`, and every work item has a one-sentence `summary` — none of them just restate the slug/id.
 - Every work item has an `id`, a `contract`, and an `oracle`.
 - `depends_on` references resolve to real IDs in this binder (no dangling refs).
 - Oracle assertions trace to the item's contract.
