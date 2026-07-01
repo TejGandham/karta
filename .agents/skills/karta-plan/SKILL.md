@@ -1,5 +1,7 @@
 ---
 name: karta-plan
+model: opus
+effort: xhigh
 description: >-
   Analyze a problem/feature description and/or a design mock or non-functional prototype and synthesize a validated binder of work items for ad-hoc orchestration; stack-agnostic (frontend, backend, CLI, data, library/SDK, IaC, mobile, ML, docs — UI is one stack among many); emits .karta/binders/<slug>.json. Trigger phrases: "plan this with karta", "synthesize a binder", "break this work into a binder", "karta-plan this feature".
 ---

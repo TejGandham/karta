@@ -1,5 +1,6 @@
 ---
 name: karta-debt
+model: haiku
 description: >-
   Harvest every KARTA-DEFER and KARTA-SME-OVERRIDE marker in the repo into a one-shot, read-only ledger so deliberate shortcuts and overrides don't rot into "later means never". Groups by file, flags markers with no upgrade trigger. Writes nothing, tracks nothing. Trigger phrases: "karta debt", "list the shortcuts", "what did we defer", "harvest the overrides".
 ---

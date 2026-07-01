@@ -1,5 +1,7 @@
 ---
 name: karta-build
+model: sonnet
+effort: high
 description: >-
   Use when implementing one work item from a karta binder in an isolated git worktree — stack-agnostic (frontend, backend, CLI, data, IaC, …) — running the project's lint/test/build plus the item's acceptance check, tagging commits, and completing the item on its branch (in a wave the orchestrator merges; invoked directly the worker merges into the per-binder integration branch). No PR. Trigger phrases: "build this binder item", "implement work item `<id>`", "karta-build `<binder> <id>`".
 ---

@@ -1,5 +1,6 @@
 ---
 name: karta-verify
+model: haiku
 description: Verify one built work item against its behavioral acceptance check (oracle types unit/integration/e2e/smoke) in a read-only, fresh session on the actual diff; check acceptance + external-contract conformance + boundary crossings; kick findings back to build and escalate to the human only on retry-exhaustion.
 triggers:
   - "verify this work item"

@@ -1,5 +1,7 @@
 ---
 name: karta-plainlanguage
+model: sonnet
+effort: medium
 description: Write or revise prose so a real reader can use it on the first read. Apply this whenever drafting or editing user-facing writing — documentation, READMEs, guides, announcements, emails, policies, regulations, release notes, help text, error messages, public-facing copy, or any message someone has to act on. Also apply when the user says "make this clearer," "simplify this," "rewrite in plain English," "less jargon," "tighten this up," or asks for an edit pass on existing prose. Skip for code, code comments, commit messages, and internal log lines — those follow different conventions.
 ---
 

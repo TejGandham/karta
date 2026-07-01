@@ -1,5 +1,6 @@
 ---
 name: karta-status
+model: haiku
 description: >-
   Show what's next in a karta run — where you are and the single next action, at binder and work-item level, derived fresh from git every time and never stored. Read-only. When someone wants to SEE or watch status, it opens the live Karta Watch browser page by default; a one-shot terminal map is the headless fallback. Trigger phrases: "what's next", "karta status", "where am I in this binder", "show me the karta status", "karta watch", "karta-status".
 ---

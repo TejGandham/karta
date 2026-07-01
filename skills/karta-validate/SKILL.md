@@ -1,5 +1,7 @@
 ---
 name: karta-validate
+model: opus
+effort: xhigh
 description: Compare a running frontend implementation against design HTML files exported from Claude Design OR a runtime-JSX design source. Opens both the live app (at the caller-provided app URL) and the served design prototype through bundled uv-run capture scripts, captures screenshots and DOM snapshots, then reports structured discrepancies across layout, color, typography, spacing, component structure, and visual hierarchy. Validates one view per invocation — the calling pipeline loops for multiple views. Invoke when validating implementation fidelity — trigger phrases include "validate against the design", "compare implementation to design", "check design fidelity", "does this match the design", "visual QA against design HTML", or any request to diff what's running vs the design prototype files.
 ---
 

@@ -1,5 +1,7 @@
 ---
 name: karta-deliver
+model: sonnet
+effort: high
 description: >-
   Deliver a karta binder by building its work items in parallel waves onto a per-binder integration branch, serializing only where correctness or collision demands it; resume is git-native; ends at the assembled integration branch (no PR). Trigger phrases: "deliver this binder", "run the binder", "karta-deliver `<binder>`".
 ---
