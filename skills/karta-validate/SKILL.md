@@ -139,18 +139,20 @@ EXTRA_ELEMENTS:
 Not evaluated.
 ```
 
-Otherwise compare across:
+Otherwise run the comparison in two passes and **ground every finding in evidence** — start from the exact structured data, but treat the screenshots as an equal, mandatory source, not an afterthought. The extracted data covers only some elements (headings, buttons, landmarks) and a few properties, so it finds much but not everything.
 
-- layout and structure
-- colors and theming
-- typography
-- spacing
-- component fidelity
-- visual hierarchy
-- interactive elements
-- content and copy, ignoring mock-data value differences
+**Pass 1 — diff the structured captures (exact).** Compare `design.extracted_data` against `app.extracted_data`, and token map against token map. Match elements within a role by layout position and bounding-box proximity first, using text/label only as a secondary tie-breaker and ignoring mock-data text (dates, names, counts, seeded values) when pairing — **do not assume a 1:1 index match**. Route only what is genuinely present on one side and absent on the other to `MISSING_ELEMENTS` / `EXTRA_ELEMENTS`, then diff the matched pairs. These computed values are exact:
 
-Use bounding boxes for quantitative layout/spacing comparisons. Flag position differences over about 20px and gap differences over about 8px as candidates, then use visual judgment for severity.
+- colors and theming — `color`, `backgroundColor`, and the `--*` token map (also feeds `TOKEN_DRIFT`).
+- typography — `fontSize`, `fontWeight`, `fontFamily` per matched element.
+- spacing and component style — `padding`, `borderRadius`.
+- layout and structure — bounding boxes from the `--boxes` snapshots; flag element position/size differences over about 20px, and edge-to-edge gap differences between adjacent siblings over about 8px, as candidates (confirm spacing candidates against the screenshots).
+
+**Pass 2 — inspect the screenshots (mandatory, even if Pass 1 is clean).** Many real regressions never reach the extracted data: wrong or missing icons, missing shadows/borders, gradients, opacity, clipped or overlapping content, broken visual hierarchy, component fidelity, interactive-element presence, the styling (color, font, size) of elements the extracted data omits — body copy, links, and form inputs — and content/copy (ignoring mock-data value differences). Inspect the design and app screenshots directly for these across the whole view. **A difference you can see and point to is a valid finding even with zero data delta** — do not discount it for lacking a numeric anchor. But do not flag plausible capture or rendering artifacts (anti-aliasing, sub-pixel shifts, font rasterization, image compression); those are not product differences.
+
+**Ground every discrepancy — a pointed-to visual difference counts as evidence.** Every finding must cite one of: a token/computed-style value, a bounding-box delta, or a specific region you can point to in a screenshot. Where a computed value exists, put the two values in `DESIGN`/`APP`; for a visual-only finding, name the element or area in `ELEMENT` (the schema allows an area, not just a selector) and put a short "what the design shows" vs "what the app shows" description in `DESIGN`/`APP`. Drop only candidates you cannot point to at all — a vague "feels off" with no region is noise. The rule exists to stop invention at high effort, **not** to suppress visible differences.
+
+**Judge on evidence, not polish or order.** The design is the fidelity target and the app is the candidate, but neither screenshot's overall "finished" look decides a finding — only a measured or pointed-to difference does. Don't let which capture you read first, or which simply looks more polished, introduce or inflate a discrepancy. Assign each discrepancy a severity by its user-facing impact: `critical` (blocks use or breaks the layout or a primary action), `major` (clearly wrong and visible but still usable), `minor` (noticeable only on close inspection), `cosmetic` (barely perceptible — a few-px shift or a tiny color delta). The oracle, when provided, still sets the pass/fail bar (see below).
 
 Expected report format:
 
