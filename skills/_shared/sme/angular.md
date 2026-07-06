@@ -15,7 +15,7 @@ see_also: ["platform-native#html-elements", "platform-native#css-capabilities"]
 ## Don't
 - Don't put logic in templates beyond simple expressions; move it to the component or a pipe.
 - Don't use `any`; type inputs, outputs, and service results.
-- Don't call `.subscribe()` without a teardown path.
+- Don't subscribe to a long-lived observable without a teardown path; a single-shot finite observable (e.g. an `HttpClient` request) completes on its own.
 - Don't mutate `@Input()` values; treat inputs as read-only.
 - Don't reach into the DOM with `ElementRef.nativeElement` when a binding or directive will do.
 
@@ -25,9 +25,9 @@ see_also: ["platform-native#html-elements", "platform-native#css-capabilities"]
 - Co-locate a component's template, styles, and spec with the component.
 
 ## Review checklist
-- [ ] No `any` in changed component/service signatures.
-- [ ] Every new component declares `ChangeDetectionStrategy.OnPush`.
-- [ ] No `.subscribe()` without `takeUntilDestroyed()`, an `async` pipe, or an explicit unsubscribe.
-- [ ] New components/directives/pipes are `standalone`, not added to an NgModule's `declarations`.
-- [ ] No business logic embedded in a template expression.
-- [ ] No date/color/range/time-picker dependency where a native `<input type=…>` covers it (see platform-native).
+- [ ] ng.1 — No `any` in changed component/service signatures.
+- [ ] ng.2 — Every new component declares `ChangeDetectionStrategy.OnPush`.
+- [ ] ng.3 — No `.subscribe()` on a long-lived or multi-emission observable without `takeUntilDestroyed()`, an `async` pipe, or an explicit unsubscribe — a single-shot finite observable (e.g. an `HttpClient` request) that completes on first emission is exempt.
+- [ ] ng.4 — New components/directives/pipes are `standalone`, not added to an NgModule's `declarations`.
+- [ ] ng.5 — No business logic embedded in a template expression.
+- [ ] ng.6 — No date/color/range/time-picker dependency where a native `<input type=…>` covers it (see platform-native).
