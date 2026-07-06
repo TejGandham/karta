@@ -6,7 +6,7 @@ see_also: ["platform-native#html-elements", "platform-native#css-capabilities", 
 ---
 ## Do
 - Use `<script setup>` with the Composition API; type props and emits with `defineProps<…>()` / `defineEmits<…>()`.
-- Use `ref` / `reactive` / `computed` for state and `watch` / `watchEffect` for side effects; clean up listeners/timers in `onUnmounted`.
+- Use `ref` / `reactive` / `computed` for state and `watch` / `watchEffect` for side effects; clean up listeners/timers in `onUnmounted`. Watchers created synchronously in `<script setup>` auto-dispose on unmount; only watchers created outside setup scope (detached, `effectScope`, module level) need their stop handle called.
 - Extract reusable stateful logic into composables (`useXxx`), one concern each.
 - Give every `v-for` a stable `:key`.
 - Scope component styles (`<style scoped>`) or use CSS modules.
@@ -24,11 +24,11 @@ see_also: ["platform-native#html-elements", "platform-native#css-capabilities", 
 - Prefer the native platform before a dependency (see platform-native).
 
 ## Review checklist
-- [ ] New components use `<script setup>` (Composition API), not the Options API.
-- [ ] `defineProps` / `defineEmits` are typed (no untyped props or emits).
-- [ ] No `any` in changed component/composable signatures.
-- [ ] Every `v-for` has a stable `:key`.
-- [ ] No prop mutation — state changes go through an emit or a local `ref`.
-- [ ] Every added listener / timer / `watch` in a component or composable has matching teardown (`onUnmounted`, or the `watch` stop handle).
-- [ ] `v-html` is only fed sanitized content (a sanitizer such as DOMPurify in the same path) — never raw user input.
-- [ ] No date/color/range/time-picker dependency where a native `<input type=…>` covers it (see platform-native).
+- [ ] vue.1 — New components use `<script setup>` (Composition API), not the Options API.
+- [ ] vue.2 — `defineProps` / `defineEmits` are typed (no untyped props or emits).
+- [ ] vue.3 — No `any` in changed component/composable signatures.
+- [ ] vue.4 — Every `v-for` has a stable `:key`.
+- [ ] vue.5 — No prop mutation — state changes go through an emit or a local `ref`.
+- [ ] vue.6 — Every added listener/timer has matching teardown (`onUnmounted`), and every `watch`/`watchEffect` created outside component setup scope (detached, `effectScope`, module level) has its stop handle called — watchers created synchronously in `<script setup>` auto-dispose and are exempt.
+- [ ] vue.7 — `v-html` is only fed sanitized content (a sanitizer such as DOMPurify in the same path) — never raw user input.
+- [ ] vue.8 — No date/color/range/time-picker dependency where a native `<input type=…>` covers it (see platform-native).

@@ -21,7 +21,7 @@ Validation at trust boundaries, error handling that prevents data loss, security
 - Deletion over addition; boring over clever; fewest files; shortest working diff.
 
 ## Review checklist (enforced — diff-checkable only)
-- [ ] No new third-party dependency where the stdlib or platform already ships it — name the dep and the native equivalent (see platform-native).
-- [ ] No abstraction with a single implementation/caller added speculatively (interface, factory, wrapper that only delegates).
-- [ ] No new config key, flag, or option that nothing reads.
-- [ ] Non-trivial new logic (a branch, loop, parser, money/security path) leaves one runnable check (an `assert`-based self-check or one small test).
+- [ ] min.1 — No new third-party dependency where the stdlib or platform already ships it — name the dep and the native equivalent (see platform-native).
+- [ ] min.2 — No abstraction with a single implementation/caller added speculatively (interface, factory, wrapper that only delegates).
+- [ ] min.3 — No new config key, flag, or option that nothing reads.
+- [ ] min.4 — Non-trivial new logic (a branch, loop, parser, money/security path) leaves one runnable check (an `assert`-based self-check or one small test).
