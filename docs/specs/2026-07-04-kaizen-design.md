@@ -136,7 +136,7 @@ The line: talking to a human is plain; pack content is technical.
 
 Each phase is a small karta binder on its own.
 
-- [ ] **Phase 1 — the frame.** The `.karta/kaizen.json` switch, the `karta-kaizen` agent and skill, the seed-all step, and the wiring to run after a delivery. kaizen can write and commit packs; you review. Human-facing output goes through `karta-plainlanguage` from day one.
+- [x] **Phase 1 — the frame.** (Delivered 2026-07-05 via the kaizen-frame binder; merged to main at v1.13.0.) The `.karta/kaizen.json` switch, the `karta-kaizen` agent and skill, the seed-all step, and the wiring to run after a delivery. kaizen can write and commit packs; you review. Human-facing output goes through `karta-plainlanguage` from day one.
 - [ ] **Phase 2 — sharpen and educate.** Read the `KARTA-SME-OVERRIDE` markers, sharpen packs where the fix is safe, and write the plain "this rule is eroding" notes where it isn't.
 - [ ] **Phase 3 — the value-add.** Spot gaps and suggest new advisory packs (technical and domain). This is the part that earns kaizen its place. The `enforcing` frontmatter flag and the gate behavior that honors it ship here, as one slice with the first advisory packs (decided 2026-07-05: all phases land before any release, so the flag belongs with its first real consumer). An advisory pack is surfaced on every run — the named gate skip, the run report, and karta-status — until the human promotes or removes it. Spotting some failure patterns may need a light per-run record; add it here if so.
 - [ ] **Phase 4 — scheduled look-back.** Run kaizen on a schedule for a periodic review, not only after a delivery.
