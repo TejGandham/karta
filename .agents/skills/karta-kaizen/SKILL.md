@@ -42,7 +42,12 @@ Read `.karta/kaizen.json`. If it is absent, unparseable, or `enabled` is not `tr
 
 ## Phase 2 — Resolve the pack set  `kaizen:packs`
 
-Resolve every pack the project uses: the always-on built-ins plus every built-in whose `match` hits the project's stack, from karta's bundled pack set (the same built-ins the karta-plan, karta-build, and karta-verify skills carry), laid under the project's own `.karta/sme/*.md` — on a name clash the project's copy wins. Hand the agent the resolved list, each id with the path to its source file. The skill resolves this because the built-in packs live in the installed plugin, not necessarily in the repo.
+Resolve the pack set for this run — deterministically, by mode. "Every pack the project uses" means:
+
+- **`Mode: delivery`** (including karta-build's single-item hatch): exactly the binder's pinned `sme[]` — the packs this delivery built and gated against. Read the list from the binder; never re-derive it by matching. A delivery seeds what it used, nothing more: a pack the stack would match but the binder never pinned is left for the run that actually pins it.
+- **`Mode: direct`** (no binder in play): derive the set the way `plan:sme` does — the always-on built-ins plus every built-in whose `match` token equals (case-insensitively) a dependency name or language emitted by `python3 skills/karta-plan/scripts/detect_stack.py <repo-root>`.
+
+Either way, resolve ids from karta's bundled pack set (the same built-ins the karta-plan, karta-build, and karta-verify skills carry), laid under the project's own `.karta/sme/*.md` — on a name clash the project's copy wins. Hand the agent the resolved list, each id with the path to its source file. The skill resolves this because the built-in packs live in the installed plugin, not necessarily in the repo.
 
 ## Phase 3 — Dispatch the writer  `kaizen:write`
 
