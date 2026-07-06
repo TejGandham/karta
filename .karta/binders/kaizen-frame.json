@@ -1,0 +1,187 @@
+{
+  "slug": "kaizen-frame",
+  "title": "Kaizen, phase one: the frame",
+  "summary": "Stand up the opt-in kaizen writer — the agent and skill that turn what your builds keep repeating into better stack packs — and wire it to run after each delivery, writing packs as commits you review. This first phase builds the frame only; sharpening rules and suggesting new packs come in later phases.",
+  "motivation": "Give karta a place to learn from finished builds: an opt-in agent that improves your stack packs and never weakens a gate on its own.",
+  "scope": {
+    "included": [
+      "the kaizen writer agent and the skill that dispatches it",
+      "the .karta/kaizen.json opt-in switch, its schema, and an example",
+      "post-delivery wiring in karta-deliver and a note in karta-build",
+      "the plugin validator and the agent-sync generator",
+      "the three plugin manifests and the generated Codex projections",
+      "README, AGENTS.md, and a how-to guide"
+    ],
+    "excluded": [
+      "the enforcing flag on stack packs and the gate behavior that honors it (ships as one slice with phase three, before any release)",
+      "reading KARTA-SME-OVERRIDE markers to sharpen packs (phase two)",
+      "the plain 'this rule is eroding' education notes (phase two)",
+      "spotting gaps and suggesting brand-new packs (phase three)",
+      "scheduled look-back runs (phase four)",
+      "the karta sme diff command",
+      "editing karta's built-in packs, and kaizen touching code, tests, the binder, or prose docs"
+    ]
+  },
+  "design_facts": {
+    "source": "docs/specs/2026-07-04-kaizen-design.md",
+    "stack": "Claude Code + Codex plugin repo: markdown skills and agents plus Python stdlib helper scripts (PEP-723, run via uv). No pyproject, no test framework, no CI — the before-commit gates are manual local scripts."
+  },
+  "sme": ["minimalism", "python-fastapi"],
+  "env_contract": {
+    "command": "uv run scripts/validate_plugin.py --self-test",
+    "supports_isolation": false
+  },
+  "runtime_contract": {
+    "runtimes": [
+      { "name": "python", "version": ">=3.11" }
+    ],
+    "on_unavailable": "halt"
+  },
+  "work_items": [
+    {
+      "id": "kaizen-agent-and-skill",
+      "title": "Add the kaizen writer agent and its skill",
+      "summary": "Create the kaizen agent and the skill that dispatches it, plus the opt-in switch's schema and example and the validator check for it. On the first enabled run the skill copies every pack the project uses into the project's own pack folder; then kaizen writes and commits packs for you to review, and everything it says to a person goes through the plain-language skill.",
+      "estimate": "L",
+      "contract": {
+        "exposes": "The karta-kaizen skill (dispatches the writer agent, seeds the project's packs into .karta/sme/ on the first enabled run, commits pack edits in delivery mode and hands them back in ad-hoc mode) and the karta-kaizen agent (writes only inside .karta/sme/ and its own config/report area). The opt-in file .karta/kaizen.json { enabled: boolean, focus?: string } — same shape as doc-gardner's switch, schema-checked by the validator. The agent's charter records the core rule: kaizen writes knowledge but never changes what gates a build; the advisory-pack mechanics arrive with phase three."
+      },
+      "shared_resources": ["generated-projections"],
+      "touches": [
+        "agents/karta-kaizen.md",
+        "skills/karta-kaizen/SKILL.md",
+        "skills/karta-kaizen/agents/openai.yaml",
+        "skills/karta-kaizen/references/kaizen-schema.json",
+        "skills/karta-kaizen/references/kaizen.example.json",
+        "scripts/sync_codex_agents.py",
+        "scripts/validate_plugin.py",
+        ".claude-plugin/marketplace.json",
+        ".codex/agents/karta-kaizen.toml",
+        "skills/karta-kaizen/references/karta-kaizen.agent.md",
+        ".agents/skills/karta-kaizen/SKILL.md",
+        ".agents/skills/karta-kaizen/agents/openai.yaml",
+        ".agents/skills/karta-kaizen/references/kaizen-schema.json",
+        ".agents/skills/karta-kaizen/references/kaizen.example.json",
+        ".agents/skills/karta-kaizen/references/karta-kaizen.agent.md",
+        "plugins/karta/skills/karta-kaizen/SKILL.md",
+        "plugins/karta/skills/karta-kaizen/agents/openai.yaml",
+        "plugins/karta/skills/karta-kaizen/references/kaizen-schema.json",
+        "plugins/karta/skills/karta-kaizen/references/kaizen.example.json",
+        "plugins/karta/skills/karta-kaizen/references/karta-kaizen.agent.md"
+      ],
+      "surface": {
+        "flagged": true,
+        "signals": [
+          "capability escalation: adds a second write-capable agent (workspace-write Codex sandbox) that commits files; review that it stays confined to .karta/sme/ and its own config/report area",
+          "sensitive zone: edits the repo's own gate scripts (validate_plugin.py, sync_codex_agents.py); the kaizen.json check should mirror the doc-gardner one, and a missing BUNDLE_SITE mapping is a hard error",
+          "blast radius: about twenty paths, though most are generated projections regenerated by the sync scripts"
+        ]
+      },
+      "oracle": {
+        "type": "smoke",
+        "command": "uv run scripts/validate_plugin.py --self-test && uv run scripts/check_shared_copies.py --self-test && uv run scripts/sync_codex_agents.py --check && uv run scripts/sync_codex_skills.py --check",
+        "assertions": [
+          "The four before-commit gates pass clean.",
+          "The Claude marketplace lists skills/karta-kaizen, and skills/karta-kaizen/agents/openai.yaml exists with a display_name.",
+          "sync_codex_agents.py maps karta-kaizen to its spawn-site skill in BUNDLE_SITE and regenerates .codex/agents/karta-kaizen.toml (workspace-write, derived from the agent's Write/Edit tools) and the bundled karta-kaizen.agent.md.",
+          "validate_plugin.py schema-checks a present .karta/kaizen.json the way it checks doc-gardner.json — enabled must be boolean, only enabled and focus keys allowed.",
+          "The skill documents seeding every used pack into .karta/sme/ on the first enabled run, committing pack edits in delivery mode, and routing all human-facing output through the karta-plainlanguage skill.",
+          "The Codex mirrors under .agents/skills and plugins/karta for karta-kaizen are byte-identical to the canonical skill."
+        ]
+      }
+    },
+    {
+      "id": "post-delivery-wiring",
+      "title": "Run kaizen after a delivery when it's turned on",
+      "summary": "Wire karta-deliver to run kaizen after the doc-gardner phase when the opt-in switch is on, seeding packs on the first run and reporting what it did; add the matching note to karta-build for direct single-item runs. When the switch is off, nothing runs.",
+      "estimate": "M",
+      "depends_on": ["kaizen-agent-and-skill"],
+      "contract": {
+        "exposes": "A post-delivery kaizen phase in karta-deliver, placed after the doc-gardner phase and gated by .karta/kaizen.json, plus an equivalent note in karta-build for direct invocations. The delivery run report carries kaizen's outcome next to doc-gardner's.",
+        "consumes": "The karta-kaizen skill and the .karta/kaizen.json switch from the kaizen-agent-and-skill item."
+      },
+      "shared_resources": ["generated-projections"],
+      "touches": [
+        "skills/karta-deliver/SKILL.md",
+        "skills/karta-build/SKILL.md",
+        ".agents/skills/karta-deliver/SKILL.md",
+        "plugins/karta/skills/karta-deliver/SKILL.md",
+        ".agents/skills/karta-build/SKILL.md",
+        "plugins/karta/skills/karta-build/SKILL.md"
+      ],
+      "surface": {
+        "flagged": true,
+        "signals": [
+          "capability escalation: adds an automatic post-delivery step that lets kaizen write and commit stack packs on the integration branch; review that it runs only when opted in, runs after doc-gardner, and never halts the delivery"
+        ]
+      },
+      "oracle": {
+        "type": "smoke",
+        "command": "uv run scripts/validate_plugin.py --self-test && uv run scripts/check_shared_copies.py --self-test && uv run scripts/sync_codex_agents.py --check && uv run scripts/sync_codex_skills.py --check",
+        "assertions": [
+          "The four before-commit gates pass clean.",
+          "karta-deliver runs the kaizen skill after the doc-gardner phase only when .karta/kaizen.json has enabled: true, seeds packs on the first enabled run, and no-ops when the file is absent or disabled.",
+          "The delivery run report includes kaizen's outcome next to doc-gardner's.",
+          "karta-build carries the equivalent kaizen note for a direct single-item invocation.",
+          "The Codex mirrors for karta-deliver and karta-build are regenerated and in sync."
+        ]
+      }
+    },
+    {
+      "id": "version-bump",
+      "title": "Release the new version across the manifests",
+      "summary": "Bump the plugin version from 1.12.0 to 1.13.0 in both plugin manifests and the marketplace metadata, keeping the two plugin manifests equal, and regenerate the manifest projection.",
+      "estimate": "S",
+      "depends_on": ["kaizen-agent-and-skill"],
+      "contract": "All three manifests — .claude-plugin/plugin.json, .codex-plugin/plugin.json, and the marketplace metadata — read version 1.13.0, and the generated Codex install projection of the plugin manifest matches the canonical one.",
+      "shared_resources": ["generated-projections"],
+      "touches": [
+        ".claude-plugin/plugin.json",
+        ".codex-plugin/plugin.json",
+        ".claude-plugin/marketplace.json",
+        "plugins/karta/.codex-plugin/plugin.json"
+      ],
+      "surface": {
+        "flagged": false,
+        "signals": []
+      },
+      "oracle": {
+        "type": "smoke",
+        "command": "uv run scripts/validate_plugin.py --self-test && uv run scripts/check_shared_copies.py --self-test && uv run scripts/sync_codex_agents.py --check && uv run scripts/sync_codex_skills.py --check",
+        "assertions": [
+          "The four before-commit gates pass clean.",
+          "Both .claude-plugin/plugin.json and .codex-plugin/plugin.json read version 1.13.0 and stay equal to each other, as the validator enforces.",
+          "The marketplace metadata version reads 1.13.0.",
+          "The generated plugins/karta/.codex-plugin/plugin.json projection matches the canonical manifest."
+        ]
+      }
+    },
+    {
+      "id": "docs-and-notes",
+      "title": "Document kaizen for readers",
+      "summary": "Write the how-to guide for kaizen and note the new writer agent in the README and AGENTS.md — the second writer after doc-gardner, the one that edits your stack packs. Write it all in plain language.",
+      "estimate": "M",
+      "depends_on": ["post-delivery-wiring"],
+      "contract": "docs/how-to/kaizen.md explains turning kaizen on, the seed-all step, and review-by-commit; README.md and AGENTS.md name kaizen as the second writer agent, the one that edits the project's stack packs.",
+      "touches": [
+        "docs/how-to/kaizen.md",
+        "README.md",
+        "AGENTS.md"
+      ],
+      "surface": {
+        "flagged": false,
+        "signals": []
+      },
+      "oracle": {
+        "type": "smoke",
+        "command": "uv run scripts/validate_plugin.py --self-test",
+        "assertions": [
+          "The validator self-test passes, so repo integrity is intact.",
+          "docs/how-to/kaizen.md explains turning kaizen on, the seed-all step, and that kaizen writes packs as commits you review.",
+          "README.md and AGENTS.md note kaizen as the second writer agent after doc-gardner, the one that edits the project's stack packs.",
+          "All new and edited prose reads in plain language."
+        ]
+      }
+    }
+  ]
+}
