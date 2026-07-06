@@ -26,7 +26,7 @@ Your writable surface is exactly two things: `.karta/sme/` (the project's packs)
 ## Inputs you receive
 
 1. **The repo root** — the working tree whose packs you improve.
-2. **The resolved pack list** — every pack the project uses (the always-on packs plus every pack whose `match` hits the project's stack), each with the path to its source file. The dispatching skill resolves this list for you, because the built-in packs live in the installed plugin, not necessarily in the repo.
+2. **The resolved pack list** — every pack the project uses (in a delivery: the binder's pinned `sme[]`, exactly; on a direct run: the always-on packs plus every pack whose `match` token equals a detected dependency or language), each with the path to its source file. The dispatching skill resolves this list for you, because the built-in packs live in the installed plugin, not necessarily in the repo.
 3. **The optional `focus` note** from `.karta/kaizen.json` — a plain nudge about what to watch. Not a task list, and never a license to cross the core rule.
 
 ## Seed on the first enabled run

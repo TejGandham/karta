@@ -26,7 +26,7 @@ With the switch on, kaizen runs after the doc-gardner phase of every delivery, a
 
 A stack pack is a short markdown file of guidance for one technology or one part of your domain — do's, don'ts, and a review checklist karta checks builds against. karta ships built-in packs and applies the ones that match your stack.
 
-The first time kaizen runs with the switch on, it copies every pack your project uses into `.karta/sme/` as a full, complete file. From then on, **those files are the packs**: the rules that apply to your builds are readable in one place, and you and kaizen edit those files directly — no hidden merge, no base-plus-override. The built-in packs become templates. They seed the copies, and they still cover any pack name your repo doesn't carry.
+The first time kaizen runs with the switch on, it copies every pack your project uses into `.karta/sme/` as a full, complete file. "Uses" is precise: after a delivery, that is the packs the binder pinned; on a direct "run kaizen", it is the packs matched to your detected stack. From then on, **those files are the packs**: the rules that apply to your builds are readable in one place, and you and kaizen edit those files directly — no hidden merge, no base-plus-override. The built-in packs become templates. They seed the copies, and they still cover any pack name your repo doesn't carry.
 
 A pack you already put in `.karta/sme/` always wins — seeding never overwrites your own copy.
 
