@@ -37,6 +37,7 @@ BUNDLE_SITE = {
     "karta-acceptance-reviewer": "karta-verify",
     "karta-safety-auditor": "karta-verify",
     "karta-doc-gardner": "karta-doc-gardner",
+    "karta-kaizen": "karta-kaizen",
 }
 
 

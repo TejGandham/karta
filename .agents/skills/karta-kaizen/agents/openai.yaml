@@ -1,0 +1,5 @@
+interface:
+  display_name: "karta-kaizen"
+  short_description: "Improve the project's stack packs from what its builds keep repeating (opt-in via .karta/kaizen.json)."
+policy:
+  allow_implicit_invocation: true

@@ -23,6 +23,7 @@
         "./skills/karta-validate",
         "./skills/karta-plainlanguage",
         "./skills/karta-doc-gardner",
+        "./skills/karta-kaizen",
         "./skills/karta-debt",
         "./skills/karta-status"
       ]

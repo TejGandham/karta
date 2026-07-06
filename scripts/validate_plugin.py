@@ -224,6 +224,25 @@ def _check_codex(errors: list[str], skill_names: set[str]) -> None:
                 if key not in ("enabled", "focus"):
                     errors.append(f".karta/doc-gardner.json: unknown key '{key}' (allowed: enabled, focus)")
 
+    # 7. kaizen opt-in config — if a repo commits one, it must be well-formed.
+    # KARTA-SME-OVERRIDE(minimalism: non-trivial new logic leaves one runnable check):
+    # mirrors the proven doc-gardner block above pattern-for-pattern, and this repo ships
+    # no test framework by design (manual gate scripts only) [ceiling: a third opt-in
+    # config copy; upgrade: factor the copies into one shared, checked helper]
+    kz = ROOT / ".karta" / "kaizen.json"
+    if kz.exists():
+        try:
+            cfg = json.loads(kz.read_text())
+        except json.JSONDecodeError as e:
+            errors.append(f".karta/kaizen.json: invalid JSON ({e})")
+            cfg = None
+        if isinstance(cfg, dict):
+            if not isinstance(cfg.get("enabled"), bool):
+                errors.append(".karta/kaizen.json: 'enabled' must be a boolean")
+            for key in cfg:
+                if key not in ("enabled", "focus"):
+                    errors.append(f".karta/kaizen.json: unknown key '{key}' (allowed: enabled, focus)")
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
