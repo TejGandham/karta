@@ -36,7 +36,7 @@ karta is a plugin for **both** Claude Code and Codex CLI — both first-class. T
 /plugin install karta@karta
 ```
 
-This registers all karta skills under the `karta:` namespace, plus three agents (two gates, one doc writer). The gates run automatically as registered read-only subagents; no setup. Full guide: [docs/how-to/claude-code.md](docs/how-to/claude-code.md).
+This registers all karta skills under the `karta:` namespace, plus four agents (two gates, two writers). The gates run automatically as registered read-only subagents; no setup. Full guide: [docs/how-to/claude-code.md](docs/how-to/claude-code.md).
 
 ### Codex CLI
 
@@ -100,7 +100,13 @@ karta writes everything it shows you — run reports, prompts, summaries — to 
 
 Docs rot. Turn on **doc-gardner** and karta keeps your prose in sync with your code. Add `.karta/doc-gardner.json` with `{"enabled": true}` (and an optional `"focus"` note); every `karta-deliver` run then ends by rewriting any drifted docs — README, `docs/`, `AGENTS.md`, `ARCHITECTURE` — to match the delivered code, as one `docs: gardner <slug>` commit.
 
-It's all or nothing: on, drift is fixed automatically; off, it never runs. Scope is recomputed each run, so a file added later is never missed. The fix lands as a labeled, revertible commit on the branch you already review. It ships the **`karta-doc-gardner`** skill and a writer agent — the only karta agent that edits, and only docs. Full guide: [`docs/how-to/doc-gardner.md`](docs/how-to/doc-gardner.md).
+It's all or nothing: on, drift is fixed automatically; off, it never runs. Scope is recomputed each run, so a file added later is never missed. The fix lands as a labeled, revertible commit on the branch you already review. It ships the **`karta-doc-gardner`** skill and a writer agent that edits docs and nothing else. Full guide: [`docs/how-to/doc-gardner.md`](docs/how-to/doc-gardner.md).
+
+## Kaizen: the stack-pack writer (opt-in)
+
+**kaizen** is the second writer, after doc-gardner — the one that edits your stack packs. Add `.karta/kaizen.json` with `{"enabled": true}` (and an optional `"focus"` note); every `karta-deliver` run then ends with a kaizen pass. The first enabled run copies every pack your project uses into `.karta/sme/` — from then on those files are the packs. Off means it never runs, even invoked directly.
+
+Every change lands as a labeled `kaizen:` commit on the branch you already review — no PR, no push. Kaizen writes knowledge and never changes what gates a build; sharpening rules and suggesting new packs arrive in later phases. It ships the **`karta-kaizen`** skill and a writer agent confined to your packs. Full guide: [`docs/how-to/kaizen.md`](docs/how-to/kaizen.md).
 
 ## Stack packs
 
