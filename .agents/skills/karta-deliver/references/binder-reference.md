@@ -134,6 +134,8 @@ The `contract` field shows both forms, because the schema allows `object | strin
 
 The default location is `.karta/binders/<slug>.json`. When karta-plan runs, it checks for an existing binder there first, then asks, then falls back to that default.
 
+When a delivery completes, karta-deliver moves the binder to `.karta/binders/archive/<slug>.json` (the deliver skill's end-of-life step, `deliver:archive`). An archived binder keeps the full plan of record but no longer drives status; an `after` edge naming it resolves as satisfied. Its slug is **retired**: the delivered run's `refs/karta/<slug>/` refs and wave tags remain in git, so a new binder reusing the slug would read that state as its own — karta-plan mints a fresh slug instead, and the validator and status engine warn on a shadowed archived slug.
+
 The binder is committed only at run boundaries — never mid-step. During a build run it is read-only: work items cannot modify the plan that governs them. This prevents a build step from corrupting its own governance.
 
 Resume is git-native. karta tracks progress through commit markers, wave tags, and a `refs/karta/` ref namespace. The tag and ref scheme is documented in `integration-branch.md`.

@@ -420,7 +420,9 @@ Either form satisfies the requirement: the bracket marker in the subject (canoni
 
 6. **Kaizen (opt-in).** If `.karta/kaizen.json` exists with `enabled: true`, invoke the `karta-kaizen` skill in `delivery` mode over this item's diff range (its merge versus the pre-item integration tip), passing the file's `focus`. On the first enabled run the skill seeds every used pack into `.karta/sme/`; any pack edits land as labeled `kaizen:` commits on the integration branch — fully automatic, no human, no halt. Absent or disabled, skip it. This is the single-item hatch's equivalent of `karta-deliver`'s `deliver:kaizen`. (A **wave** worker never runs kaizen; the orchestrator runs it once for the whole delivery.)
 
-7. **Surface what's next.** After the single-item merge completes, print the condensed next-step footer so the run ends pointing forward:
+7. **Binder end-of-life.** The one item is the whole binder, so a clean merge completes the run: archive the binder — `mkdir -p .karta/binders/archive && git mv .karta/binders/<slug>.json .karta/binders/archive/<slug>.json`, committed on the integration branch as `chore(karta): archive binder <slug> — delivered`. Skip on a halt (the `failed` path — the binder stays live) and skip when the binder already sits at the archive path on this branch (a resumed run — the step is idempotent). This is the single-item hatch's equivalent of `karta-deliver`'s `deliver:archive`; the archival travels with the user's merge of the integration branch. (A **wave** worker never archives; end-of-life for a multi-item delivery is the orchestrator's, once, after the last wave.)
+
+8. **Surface what's next.** After the single-item merge completes, print the condensed next-step footer so the run ends pointing forward:
 
    `uv run --script skills/karta-status/scripts/karta_next.py --footer --binder <slug>`
 
@@ -442,6 +444,7 @@ Write everything you show a person in plain language — see [references/user-fa
 - **Item id** and the binder slug
 - **Worktree path** — so the user knows where the checkout lives
 - **Terminal artifact** — single-item hatch: the integration tip the item merged to (merge commit / `done` ref); orchestrated wave: the committed item branch and its tip (`built` marker ref) that the orchestrator will merge; on a halt, the `failed` ref
+- **Binder end-of-life** — single-item hatch only: archived to `.karta/binders/archive/<slug>.json` on a clean merge, or left live with the reason (a halt). A wave worker omits this line — end-of-life is the orchestrator's
 - **Runtime** — the active runtime version(s) the floor ran under, against the `runtime_contract` (or detected pin files); note a clean match or the mismatch that halted
 - **Generated-but-unused files** (greenfield/scaffold items only) — anything the framework generator emitted that fell outside the item's `scope`/`contract`, noted here rather than written to the read-only binder
 - **Acceptance result** — which gate ran (`karta-verify` / `karta-validate` / opted out), final disposition, rounds used, any residual finding

@@ -57,7 +57,8 @@ def _enrich(state: dict, binders: list[dict]) -> dict:
     untouched."""
     wi_by_slug: dict[str, dict] = {}
     for b in binders:
-        wi_by_slug[b["slug"]] = {it["id"]: it for it in b.get("work_items", [])}
+        wi_by_slug[b["slug"]] = {it["id"]: it for it in (b.get("work_items") or [])
+                                 if isinstance(it, dict) and "id" in it}
     by_slug = {b["slug"]: b for b in binders}
 
     for ob in state["binders"]:
@@ -81,16 +82,40 @@ def _enrich(state: dict, binders: list[dict]) -> dict:
     return state
 
 
+def _append_archived(state: dict, archived: list[dict]) -> dict:
+    """Delivered binders (`.karta/binders/archive/`) join the state as merged rows so
+    the Delivered timeline phase keeps its history after karta-deliver archives a
+    binder. Archival happens only on a complete run, so every item reads done. A live
+    binder always wins over an archived namesake."""
+    live = {ob["slug"] for ob in state["binders"]}
+    for b in archived:
+        if b["slug"] in live:
+            continue
+        # tolerate junk in a hand-edited archive file — a bad row must not 500 the page
+        items = [it for it in (b.get("work_items") or [])
+                 if isinstance(it, dict) and isinstance(it.get("id"), str)]
+        state["binders"].append({
+            "slug": b["slug"], "after": [], "status": "merged", "is_next": False,
+            "items": {"total": len(items), "done": len(items), "built": 0, "failed": 0,
+                      "building": 0, "ready": 0, "blocked": 0,
+                      "detail": [{"id": it["id"], "status": "done"} for it in items]},
+        })
+    return state
+
+
 def current_state() -> dict:
     """Recompute the engine state from the CWD's .karta + git. Never cached.
 
     Returns the engine state with each item enriched (title/summary/oracle/assert/cmd/deps)
     and each binder carrying its human title/summary/motivation, by joining back to the
-    binder definitions."""
+    binder definitions. Archived (delivered) binders are appended as merged rows."""
     binders = karta_next.load_binders()
+    archived = karta_next.load_archived_binders()
     facts = karta_next.gather_git_facts(binders, karta_next._default_branch())
-    state = karta_next.derive_state(binders, facts)
-    return _enrich(state, binders)
+    state = karta_next.derive_state(binders, facts,
+                                    frozenset(b["slug"] for b in archived))
+    # archived first so a live binder wins the join over an archived namesake
+    return _enrich(_append_archived(state, archived), archived + binders)
 
 
 # ---------------------------------------------------------------------------
@@ -944,7 +969,22 @@ def _run_self_test() -> int:
                    "items": {"api": {"done": True, "done_in_default": False}, "doc": {}}},
         "s-del": {"items": {"r": {}}},
     }}
-    state = _enrich(karta_next.derive_state(binders, facts), binders)
+    archived = [
+        {"slug": "s-shipped", "title": "Already shipped", "summary": "Delivered and archived.",
+         "motivation": "x", "scope": {"included": ["x"]},
+         "work_items": [{"id": "z", "title": "The shipped step", "summary": "Done long ago.",
+                         "oracle": _u("z was asserted")}]},
+        # a live namesake exists — this archived row must be skipped and the live one win the join
+        {"slug": "s-edit", "title": "Archived namesake", "summary": "Must not shadow the live binder.",
+         "motivation": "x", "scope": {"included": ["x"]},
+         "work_items": [{"id": "old", "title": "Old", "summary": "old", "oracle": _u("old")}]},
+        # junk survives: work_items null must not crash the page
+        {"slug": "s-junk", "motivation": "x", "scope": {"included": ["x"]}, "work_items": None},
+    ]
+    state = karta_next.derive_state(binders, facts,
+                                    frozenset(b["slug"] for b in archived))
+    state = _enrich(_append_archived(state, archived), archived + binders)
+    shipped = next((ob for ob in state["binders"] if ob["slug"] == "s-shipped"), None)
 
     checks: list[tuple[str, bool]] = []
     try:
@@ -952,6 +992,20 @@ def _run_self_test() -> int:
         checks.append(("state is JSON-serializable (served as /state.json)", True))
     except TypeError:
         checks.append(("state is JSON-serializable (served as /state.json)", False))
+    s_edit_rows = [ob for ob in state["binders"] if ob["slug"] == "s-edit"]
+    s_junk = next((ob for ob in state["binders"] if ob["slug"] == "s-junk"), None)
+    checks += [
+        ("an archived binder joins the state as merged, every item done",
+         shipped is not None and shipped["status"] == "merged"
+         and shipped["items"]["done"] == shipped["items"]["total"] == 1),
+        ("the archived binder is enriched (human title reaches the page)",
+         shipped is not None and shipped.get("title") == "Already shipped"),
+        ("a live binder wins over an archived namesake (one row, live title, live status)",
+         len(s_edit_rows) == 1 and s_edit_rows[0]["status"] == "in_flight"
+         and s_edit_rows[0].get("title") == "Edit the thing"),
+        ("junk work_items in an archived file degrade to an empty merged row, not a crash",
+         s_junk is not None and s_junk["status"] == "merged" and s_junk["items"]["total"] == 0),
+    ]
     for theme in ("dark", "light"):
         h = render_app_html(state, theme)
         checks += [

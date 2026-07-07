@@ -17,7 +17,11 @@ All state is git-native and recomputed on every call — there is no stored curs
 - **Binder order** is a topo sort over the optional cross-binder `after` edge (see
   [karta-plan's binder reference](../karta-plan/references/binder-reference.md)). The order is
   *derived*, never written anywhere. A dangling `after` is surfaced as a warning; a cycle is an
-  error.
+  error. An `after` naming a **delivered** binder — one karta-deliver archived to
+  `.karta/binders/archive/` — resolves as satisfied, not dangling.
+- **Archived binders** (`.karta/binders/archive/`) are delivered history: the terminal map and
+  the session-start summary never list them; the Karta Watch page shows them under its Delivered
+  phase.
 - **Binder status** — `merged` (every item's `done` ref is an ancestor of the default branch),
   `in_flight` (integration branch exists, or some items merged), or `not_started`.
 - **Work-item frontier** (for the in-flight binder) — `done` / `built` / `failed` / `building` /
