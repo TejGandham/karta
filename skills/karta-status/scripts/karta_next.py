@@ -10,12 +10,15 @@
   uv run --script karta_next.py --self-test           # embedded fixtures, exit 0/1
 
 Order is a topo sort over `after` edges, recomputed every call — never stored. A dangling `after`
-is a warning; a cross-binder cycle is an error (and order is null)."""
+is a warning; a cross-binder cycle is an error (and order is null). Delivered binders live in
+`.karta/binders/archive/` (karta-deliver's end-of-life step): they are never listed, but an
+`after` naming one resolves as satisfied — a delivered predecessor is not a dangling edge."""
 from __future__ import annotations
 import argparse, json, subprocess, sys
 from pathlib import Path
 
 BINDERS_DIR = Path(".karta/binders")
+ARCHIVE_DIR = BINDERS_DIR / "archive"
 
 
 def _topo_order(after: dict[str, list[str]]) -> list[str] | None:
@@ -59,21 +62,27 @@ def _item_status(deps: list[str], gi: dict, done_ids: set[str]) -> tuple[str, li
     return ("blocked", unmet) if unmet else ("ready", [])
 
 
-def derive_state(binders: list[dict], git_facts: dict) -> dict:
+def derive_state(binders: list[dict], git_facts: dict,
+                 archived: frozenset[str] = frozenset()) -> dict:
     default_branch = git_facts.get("default_branch", "main")
     gfb = git_facts.get("binders", {})
     by_slug = {b["slug"]: b for b in binders}
 
-    # cross-binder graph: resolve `after`, collect warnings, topo-sort for the order
+    # cross-binder graph: resolve `after`, collect warnings, topo-sort for the order.
+    # A live binder wins over an archived namesake; an `after` naming an archived-only
+    # slug is a delivered predecessor — satisfied, dropped from the graph, no warning.
     slugs = set(by_slug)
     warnings: list[str] = []
+    for s in sorted(slugs & archived):
+        warnings.append(f"binder '{s}' reuses the slug of an archived (delivered) binder — "
+                        "the delivered history is shadowed; plan new work under a fresh slug")
     after: dict[str, list[str]] = {}
     for slug, b in by_slug.items():
         resolved = []
         for ref in b.get("after", []) or []:
             if ref in slugs:
                 resolved.append(ref)
-            else:
+            elif ref not in archived:
                 warnings.append(f"binder '{slug}' has a dangling after: '{ref}' (no such binder)")
         after[slug] = resolved
     order = _topo_order(after)
@@ -229,6 +238,22 @@ def load_binders(binders_dir: Path = BINDERS_DIR) -> list[dict]:
     return out
 
 
+def load_archived_binders(archive_dir: Path = ARCHIVE_DIR) -> list[dict]:
+    """Delivered binders, moved to `.karta/binders/archive/` by karta-deliver's
+    end-of-life step. Same shape as `load_binders`; consumed for `after`
+    satisfaction (the engine) and the Delivered timeline phase (the watch page)."""
+    out = []
+    if archive_dir.is_dir():
+        for p in sorted(archive_dir.glob("*.json")):
+            try:
+                doc = json.loads(p.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(doc, dict) and isinstance(doc.get("slug"), str):
+                out.append(doc)
+    return out
+
+
 def gather_git_facts(binders: list[dict], default_branch: str) -> dict:
     facts = {"default_branch": default_branch, "binders": {}}
     for b in binders:
@@ -307,6 +332,29 @@ def _run_self_test() -> int:
                                                "cb": {"items": {"a": {}}}}})
     checks.append(("cycle -> order None + error", cyc["order"] is None and len(cyc["errors"]) == 1))
 
+    # archived predecessors: an `after` naming a delivered (archived) binder is satisfied —
+    # no warning, and the successor is next. A live binder wins over an archived namesake.
+    arch = derive_state(
+        [{"slug": "w", "after": ["shipped"], "motivation": "x", "scope": {"included": ["x"]},
+          "work_items": [{"id": "a", "title": "A", "oracle": {"type": "unit"}}]}],
+        {"default_branch": "main", "binders": {"w": {"items": {"a": {}}}}},
+        archived=frozenset({"shipped"}))
+    checks.append(("after -> archived binder is satisfied (no warning, is_next)",
+                   arch["warnings"] == [] and arch["binders"][0]["is_next"] is True))
+    dup = derive_state(
+        [{"slug": "dup", "motivation": "x", "scope": {"included": ["x"]},
+          "work_items": [{"id": "a", "title": "A", "oracle": {"type": "unit"}}]},
+         {"slug": "x", "after": ["dup"], "motivation": "x", "scope": {"included": ["x"]},
+          "work_items": [{"id": "a", "title": "A", "oracle": {"type": "unit"}}]}],
+        {"default_branch": "main", "binders": {"dup": {"items": {"a": {}}},
+                                               "x": {"items": {"a": {}}}}},
+        archived=frozenset({"dup"}))
+    x_row = next(ob for ob in dup["binders"] if ob["slug"] == "x")
+    checks.append(("live slug wins over an archived namesake (edge kept, x waits)",
+                   x_row["after"] == ["dup"] and x_row["is_next"] is False))
+    checks.append(("the shadowed archived namesake draws a warning",
+                   len(dup["warnings"]) == 1 and "reuses the slug" in dup["warnings"][0]))
+
     # the renderers must not raise on a real state
     try:
         render_terminal(st); render_footer(st, "s-edit"); rendered = True
@@ -332,7 +380,8 @@ def main() -> int:
     if args.self_test:
         return _run_self_test()
     binders = load_binders()
-    state = derive_state(binders, gather_git_facts(binders, _default_branch()))
+    archived = frozenset(b["slug"] for b in load_archived_binders())
+    state = derive_state(binders, gather_git_facts(binders, _default_branch()), archived)
     if args.json:
         print(json.dumps(state, indent=2))
     elif args.footer:

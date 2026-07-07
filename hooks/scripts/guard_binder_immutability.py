@@ -3,15 +3,17 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""PreToolUse guard: committed binders are read-only.
+"""PreToolUse guard: committed binders are read-only — live and archived.
 
 Zero dependencies (pure stdlib). The harness invokes this on Write|Edit|NotebookEdit
 with the hook payload JSON on stdin. If the target path is a binder
-(`.karta/binders/*.json`) that already exists in HEAD, the write is denied — exit 2
-with the reason on stderr. A committed binder is the plan of record karta-deliver
-derives run state from, so mutating it mid-flight desynchronizes the run. Untracked
-binder writes (plan drafting) pass. Any internal error fails open (exit 0): this
-guard must never break an unrelated tool call.
+(`.karta/binders/*.json`, or a delivered one under `.karta/binders/archive/`) that
+already exists in HEAD, the write is denied — exit 2 with the reason on stderr. A
+committed live binder is the plan of record karta-deliver derives run state from, so
+mutating it mid-flight desynchronizes the run; an archived binder is delivered
+history and is never edited. Untracked binder writes (plan drafting) pass. Any
+internal error fails open (exit 0): this guard must never break an unrelated tool
+call.
 
   guard_binder_immutability.py              # hook mode: payload on stdin, exit 0/2
   guard_binder_immutability.py --self-test  # run embedded fixtures, exit 0/1
@@ -20,7 +22,7 @@ from __future__ import annotations
 import argparse, json, os, re, subprocess, sys
 from pathlib import Path
 
-BINDER_RE = re.compile(r"(?:^|/)\.karta/binders/[^/]+\.json$")
+BINDER_RE = re.compile(r"(?:^|/)\.karta/binders/(?:archive/)?[^/]+\.json$")
 
 
 def _target_path(tool_input: dict) -> str | None:
@@ -63,9 +65,10 @@ def decide(payload: dict, tracked=_tracked_in_head) -> tuple[int, str]:
         f"karta: committed binders are read-only. '{target}' already exists in HEAD, and a "
         "committed binder is the plan of record — karta-deliver derives the whole run's state "
         "from it plus its git refs, so mutating it mid-flight desynchronizes the run and its "
-        "resume story. To change the plan, re-plan with karta-plan (which writes a fresh binder "
-        "file) or draft a new, not-yet-committed binder; writes to untracked binder drafts are "
-        "not blocked.")
+        "resume story; an archived binder (.karta/binders/archive/) is delivered history and "
+        "is never edited. To change the plan, re-plan with karta-plan (which writes a fresh "
+        "binder file) or draft a new, not-yet-committed binder; writes to untracked binder "
+        "drafts are not blocked.")
 
 
 def _run_self_test() -> int:
@@ -94,6 +97,12 @@ def _run_self_test() -> int:
          pre("Write", file_path="docs/karta/binders-history.json", content="x"), tracked, 0),
         ("nested binder dir path still matches",
          pre("Write", file_path="sub/.karta/binders/x.json", content="{}"), tracked, 2),
+        ("tracked archived binder write denied",
+         pre("Write", file_path=".karta/binders/archive/done.json", content="{}"), tracked, 2),
+        ("untracked archive draft passes",
+         pre("Write", file_path=".karta/binders/archive/new.json", content="{}"), untracked, 0),
+        ("deeper subdir under binders passes (only archive/ is a binder home)",
+         pre("Write", file_path=".karta/binders/archive/nested/x.json", content="{}"), tracked, 0),
         ("no target path passes", pre("Write", content="x"), tracked, 0),
         ("tool_input not a dict passes",
          {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": "junk"},

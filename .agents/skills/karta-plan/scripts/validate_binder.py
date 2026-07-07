@@ -234,24 +234,32 @@ def sme_warnings(binder: dict) -> list[str]:
             "always-on 'minimalism' pack; confirm the plan:sme matching step ran"]
 
 
-def cross_binder_errors(binders: list[dict]) -> tuple[list[str], list[str]]:
+def cross_binder_errors(binders: list[dict],
+                        archived: frozenset[str] = frozenset()) -> tuple[list[str], list[str]]:
     """Check the cross-binder `after` graph across a whole set of binders.
 
     Returns (errors, warnings). A dangling `after` ref (no binder with that slug) is a
     WARNING — the suggested order is recomputed over the binders that exist, so a stale edge
     surfaces but never fails the set. A cycle across `after` edges is an ERROR — a cycle has no
-    valid order. A single binder, or binders with no `after`, produce nothing."""
+    valid order. A single binder, or binders with no `after`, produce nothing.
+
+    `archived` is the slug set of delivered binders (`.karta/binders/archive/`): an `after`
+    naming one is satisfied, not dangling; a live binder REUSING an archived slug draws a
+    warning — the delivered history would be shadowed, so new work takes a fresh slug."""
     slugs = {b.get("slug") for b in binders}
     warnings: list[str] = []
+    for s in sorted(slugs & archived):
+        warnings.append(f"binder '{s}' reuses the slug of an archived (delivered) binder — "
+                        "the delivered history is shadowed; plan new work under a fresh slug")
     graph: dict[str, list[str]] = {}
     for b in binders:
         slug = b.get("slug")
         resolved: list[str] = []
         for ref in b.get("after", []) or []:
-            if ref not in slugs:
-                warnings.append(f"binder '{slug}' has a dangling after: '{ref}' (no such binder)")
-            else:
+            if ref in slugs:
                 resolved.append(ref)
+            elif ref not in archived:
+                warnings.append(f"binder '{slug}' has a dangling after: '{ref}' (no such binder)")
         graph[slug] = resolved
 
     errors: list[str] = []
@@ -450,13 +458,17 @@ def _run_self_test() -> int:
                 "work_items": [{"id": "a", "title": "A", "summary": "s", "oracle": _u}]}
 
     cb_cases = [
-        ("clean after-chain", [cb_new, cb_edit, cb_del], [], 0),         # no errors, no warnings
-        ("dangling after-ref", [cb_dangle], [], 1),                       # 1 warning, no error
-        ("after cycle", [cb_cyc_a, cb_cyc_b], "cycle", 0),                # error present
-        ("lone binder unchanged", [cb_new], [], 0),                       # nothing flagged
+        ("clean after-chain", [cb_new, cb_edit, cb_del], [], 0, frozenset()),   # no errors, no warnings
+        ("dangling after-ref", [cb_dangle], [], 1, frozenset()),                # 1 warning, no error
+        ("after cycle", [cb_cyc_a, cb_cyc_b], "cycle", 0, frozenset()),         # error present
+        ("lone binder unchanged", [cb_new], [], 0, frozenset()),                # nothing flagged
+        ("after -> archived slug is satisfied", [cb_dangle], [], 0,             # delivered predecessor
+         frozenset({"ghost"})),
+        ("live slug reusing an archived one warns", [cb_new], [], 1,            # shadowed history
+         frozenset({"s-new"})),
     ]
-    for name, binders, want_err, want_warn in cb_cases:
-        errs, warns = cross_binder_errors(binders)
+    for name, binders, want_err, want_warn, archived in cb_cases:
+        errs, warns = cross_binder_errors(binders, archived)
         if want_err == "cycle":
             ok = any("cycle" in e for e in errs)
         else:
@@ -477,6 +489,15 @@ def main() -> int:
         return _run_self_test()
     if not args.binder:
         ap.error("provide --binder <path> or --self-test")
+    if not args.binder.is_file():
+        archived_twin = args.binder.resolve().parent / "archive" / args.binder.name
+        if archived_twin.is_file():
+            print(f"INVALID: binder not found at {args.binder} — it was already delivered. "
+                  f"karta-deliver's end-of-life step archived it to {archived_twin}; "
+                  "plan new work as a new binder with a fresh slug.")
+        else:
+            print(f"INVALID: binder file not found: {args.binder}")
+        return 1
     binder = json.loads(args.binder.read_text())
     errs = validate_binder(binder)
     if errs:
@@ -490,7 +511,9 @@ def main() -> int:
         print(f"  opt-out: {s}")
     for w in sme_warnings(binder):
         print(f"  warning: {w}")
-    # cross-binder `after` graph, when the binder is one of a set on disk
+    # cross-binder `after` graph, when the binder is one of a set on disk — including
+    # delivered (archived) slugs, so an `after` naming one reads satisfied and a slug
+    # reuse draws its warning even for a lone live binder.
     if args.binder:
         siblings = []
         for p in sorted(args.binder.resolve().parent.glob("*.json")):
@@ -500,8 +523,18 @@ def main() -> int:
                     siblings.append(doc)
             except (OSError, json.JSONDecodeError):
                 continue
-        if len(siblings) > 1:
-            cb_errs, cb_warns = cross_binder_errors(siblings)
+        archived = set()
+        archive_dir = args.binder.resolve().parent / "archive"
+        if archive_dir.is_dir():
+            for p in sorted(archive_dir.glob("*.json")):
+                try:
+                    doc = json.loads(p.read_text())
+                    if isinstance(doc, dict) and isinstance(doc.get("slug"), str):
+                        archived.add(doc["slug"])
+                except (OSError, json.JSONDecodeError):
+                    continue
+        if len(siblings) > 1 or archived:
+            cb_errs, cb_warns = cross_binder_errors(siblings, frozenset(archived))
             for w in cb_warns:
                 print(f"  warning: {w}")
             if cb_errs:

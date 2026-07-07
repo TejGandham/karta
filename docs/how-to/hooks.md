@@ -8,10 +8,10 @@ Hooks are a backstop, not a replacement. Every skill still states its rules in f
 
 | Rule | Runtime | What happens |
 |-|-|-|
-| Committed binders are read-only | Claude Code (plugin hook) | Any `Write`, `Edit`, or `NotebookEdit` to a `.karta/binders/*.json` that exists in `HEAD` is blocked. Untracked binders — plan drafts — pass. |
+| Committed binders are read-only | Claude Code (plugin hook) | Any `Write`, `Edit`, or `NotebookEdit` to a `.karta/binders/*.json` that exists in `HEAD` is blocked — including delivered binders under `.karta/binders/archive/`. Untracked binders — plan drafts — pass. |
 | Pack edits must validate | Claude Code (plugin hook) | A `Write` of a `.md` file under `.karta/sme/` is checked against the pack validator before it lands and blocked with the findings. After an `Edit` or `Write`, the file on disk is checked again; a failure comes back as feedback the agent must fix. |
 | Safety-auditor dispatch is complete | Claude Code (plugin hook) | Dispatching `karta-safety-auditor` without a binder path — or, when the binder pins packs, without the resolved rule checklists — is blocked, naming the pinned ids. |
-| You see your binders at session start | Claude Code (plugin hook) | At session start: one short line per binder in `.karta/binders/` (slug, item count, pinned packs). About ten lines at most; silent when there are none. Informs only — never blocks. |
+| You see your binders at session start | Claude Code (plugin hook) | At session start: one short line per binder in `.karta/binders/` (slug, item count, pinned packs). Delivered binders — archived to `.karta/binders/archive/` — are excluded. About ten lines at most; silent when there are none. Informs only — never blocks. |
 | Commits in this repo pass the gate suite | Claude Code (this repo's project settings) | A `git commit` in a karta checkout first runs the repo's sync and validation gates; a failing gate blocks the commit with its output. Not shipped in the plugin. |
 | karta never pushes | Codex CLI (this repo's `.codex/rules/karta.rules`) | `git push` asks you first; a flag-first `git push --force` (or `git push -f`) is forbidden outright. A force flag buried later in the command (`git push origin main --force`) still lands on the ask-first rule — prefix rules match from the start of the command. Copy the file into your own project's `.codex/rules/` for the same protection there. |
 
