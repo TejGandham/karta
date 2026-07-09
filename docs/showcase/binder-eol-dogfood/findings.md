@@ -130,6 +130,17 @@ Read the fidelity result with these in mind:
 
 On a real, multi-part feature with a known-good answer, karta planned a sound decomposition, built every item through its own gates, and assembled them across waves with no failed checks. Blind — with the answer removed from the repo entirely — it produced a result that was behaviorally equivalent to the hand-written original: the same checks, the same coverage, one load-bearing regex identical to the character. The pipeline held end to end, and its enforcement hooks bit when they should. The blind run also found the honest edge: per-item gates keep each item correct but do not enforce wording consistency between items that share no dependency — a gap worth a cross-item check.
 
+## Outcome — the gap became a shipped feature (karta 1.18.0)
+
+Finding 4's gap did not stay a note. It was designed, built, and released — through karta's own pipeline, the same way the dogfood ran.
+
+- **Designed.** A multi-model roundtable weighed three mechanisms and converged on a deterministic one: a binder declares the strings several items must render identically, and karta enforces byte-identity — no fuzzy near-duplicate scanner (it would flood false positives in a determinism-first system). The design is recorded in [`docs/specs/2026-07-08-cross-item-term-consistency-design.md`](../../specs/2026-07-08-cross-item-term-consistency-design.md).
+- **Planned and delivered by karta.** karta-plan synthesized a five-item binder; karta-deliver built it in waves onto a real integration branch. Every item passed its gates — and, fittingly, the safety-auditor caught a real cross-file-pointer drift mid-build (a renumbered step left a stale ordinal in a release checklist), the *same class* of bug the feature exists to prevent, caught by the existing gate. One kickback fixed it.
+- **What shipped.** A new optional `shared_terms` binder field (`id` + a canonical *substring* + the items that must render it), validated at plan time by `validate_binder.py`; a pure-stdlib `check_shared_terms.py` (with `--self-test`) that asserts byte-identity across each listed item's touched files, `[PENDING]` for undelivered items; enforcement wired into karta-deliver's post-wave step and karta-build's single-item hatch, halting a delivery on drift; and plan-time surfacing of candidates. Released as **1.18.0** ([checklist](../../releases/v1.18.0-checklist.md)).
+- **Verified end to end.** The 1.18.0 test-drive delivered a fixture binder whose two items drift on a shared term: the build passed and the merges were text-clean, but the post-wave check returned `SHARED TERMS: DRIFT` and the wave reverted — the exact failure this document found, now stopped. Correcting the wording let the wave complete.
+
+So the loop closed on itself: a gap karta found by dogfooding became a deterministic guardrail against that gap, found → designed → planned → built → released → verified, entirely through karta.
+
 ## Reproduce
 
 The run used an isolated clone, not the live repo:
