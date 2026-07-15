@@ -4,7 +4,7 @@ A stack pack is a short markdown file of expert guidance for one technology or o
 
 ## Where packs live
 
-Built-in packs ship inside the plugin: `minimalism` (always on), `angular`, `vue`, `python`, and `python-fastapi`, plus a `platform-native` reference they point at. Your project adds its own in `.karta/sme/*.md`. On a name clash the project file wins — drop a `.karta/sme/minimalism.md` in your repo and karta reads yours, not the built-in. (With [kaizen](kaizen.md) on, the first enabled run copies every pack your project uses into `.karta/sme/`; from then on those files are the packs, and this guide is how you edit them.)
+Built-in packs ship inside the plugin: `minimalism` (always on), `angular`, `vue`, `python`, `python-fastapi`, `go-naming`, and `go-htmx`, plus a `platform-native` reference they point at. Your project adds its own in `.karta/sme/*.md`. On a name clash the project file wins — drop a `.karta/sme/minimalism.md` in your repo and karta reads yours, not the built-in. (With [kaizen](kaizen.md) on, the first enabled run copies every pack your project uses into `.karta/sme/`; from then on those files are the packs, and this guide is how you edit them.)
 
 A React/Next pack is deliberately missing: it is deferred until its rules have been validated against real projects. Write your own overlay pack if you need one now.
 
@@ -35,6 +35,8 @@ No other keys are allowed — the validator fails on anything it does not recogn
 
 `skills/karta-plan/scripts/detect_stack.py` scans your repo's manifests — `package.json`, `pyproject.toml`, `requirements*.txt`, `go.mod`, `Cargo.toml`, `Gemfile`, `composer.json` — and emits two lists: dependency names and languages (`python`, `javascript/node`, `go`, `rust`, `ruby`, `php`). A pack applies when one of its `match` tokens **equals** (case-insensitive, whole token) a name on either list. There is no substring or free-prose guessing: `match: ["fastapi"]` fires on the `fastapi` dependency and on nothing else. A pack you want everywhere uses `always: true` instead.
 
+Matching sees only manifests, so a stack the manifests can't see never auto-matches. The canonical case is `go-htmx`: the pack itself mandates vendoring htmx as a static file, which leaves no manifest trace — a Go app with vendored htmx and stdlib templates matches only via a `github.com/a-h/templ` require or an `htmx.org` entry in `package.json`. To opt in anyway, copy the built-in to `.karta/sme/go-htmx.md` and replace its `match` line with `always: true` — your overlay wins by name (the same escape works for any manifest-invisible stack).
+
 ## The four sections — one has teeth
 
 A pack's body is advisory guidance plus one enforced section. The advisory part is customarily **Do / Don't / Patterns** — the exact headings are yours. The enforced part is the `## Review checklist` section, and its heading is fixed.
@@ -49,7 +51,7 @@ Each rule is one line in a fixed format:
 - [ ] py.1 — No bare `except:` — catch the narrowest exception the block can raise.
 ```
 
-- The id is `<prefix>.<number>`. Each pack has one prefix, fixed for its lifetime: `min` (minimalism), `ng` (angular), `vue`, `py` (python), `fapi` (python-fastapi). A new pack registers its own short prefix — pick one and never change it.
+- The id is `<prefix>.<number>`. Each pack has one prefix, fixed for its lifetime: `min` (minimalism), `ng` (angular), `vue`, `py` (python), `fapi` (python-fastapi), `goname` (go-naming), `htmx` (go-htmx). A new pack registers its own short prefix — pick one and never change it.
 - **Ids are never recycled.** A retired rule keeps its number forever as a tombstone line, so an override marker already sitting in someone's code never silently points at a different rule:
 
   ```markdown
