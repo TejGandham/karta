@@ -1,5 +1,5 @@
 {
-  "description": "karta phase-1 harness enforcement: binder immutability, pack write validation, fail-closed auditor dispatch, kaizen writer confinement, and session status injection. Same contract everywhere: hook payload JSON on stdin; exit 0 allows, exit 2 blocks (PreToolUse) or feeds corrective stderr back to the model (PostToolUse).",
+  "description": "karta phase-1 harness enforcement: binder immutability, pack write validation, fail-closed auditor dispatch, kaizen writer confinement, session status injection, and the delivery Stop-gate (a session may not quietly stop with built-but-unmerged items or a complete-but-unarchived binder — blocked once per state, then the identical stop passes). Same contract everywhere: hook payload JSON on stdin; exit 0 allows, exit 2 blocks (PreToolUse, Stop) or feeds corrective stderr back to the model (PostToolUse).",
   "hooks": {
     "PreToolUse": [
       {
@@ -62,6 +62,18 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/inject_karta_status.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/guard_delivery_stop.py\"",
             "timeout": 30
           }
         ]
