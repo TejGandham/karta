@@ -75,6 +75,20 @@ def _structured_verdict(entry: dict) -> str | None:
     return None
 
 
+# A failed dispatch reports one of these transport statuses. Such a status must
+# never stand in as a review verdict, or a panel where every provider errored
+# would satisfy the min_providers floor without a single real review happening.
+ERROR_STATUSES = frozenset({"error", "timeout", "failed", "rate_limited", "cancelled"})
+
+
+def _nonerror_status(entry: dict) -> str | None:
+    """The transport status usable as a last-resort verdict — but only when the
+    dispatch actually succeeded. An error-class status yields None so the entry
+    carries no verdict and does not count toward the floor."""
+    s = _first_str(entry.get("status"))
+    return s if s and s.lower() not in ERROR_STATUSES else None
+
+
 def normalize_panel(raw) -> list[dict]:
     """Normalize the raw roundtable-critique result object into the stored panel
     list of {provider, verdict, summary}. The raw object is the tool's own
@@ -96,27 +110,29 @@ def normalize_panel(raw) -> list[dict]:
             raise ValueError(f"panel entry {key!r} is not an object")
         panel.append({
             "provider": _first_str(val.get("provider"), key),
-            "verdict": _first_str(val.get("verdict")) or _structured_verdict(val) or _first_str(val.get("status")),
+            "verdict": _first_str(val.get("verdict")) or _structured_verdict(val) or _nonerror_status(val),
             "summary": _first_str(val.get("summary"), val.get("response")) or "",
         })
     return panel
 
 
 def validate_normalized(panel: list[dict], min_providers: int) -> tuple[bool, str]:
-    """A panel is a review only if every entry names its provider and a verdict,
-    and it carries at least min_providers distinct providers. Returns (ok, why)."""
+    """A panel is a multi-model review only if it carries at least min_providers
+    distinct providers that each returned a real verdict. An entry with no
+    derivable verdict — a failed or errored dispatch — is dropped, not counted,
+    so one provider erroring never sinks a genuine panel; but an entry with no
+    provider at all is malformed and rejects the whole panel. Returns (ok, why)."""
     if not panel:
         return False, "panel is empty — no reviewer entries"
     for entry in panel:
         if not entry.get("provider"):
             return False, "a panel entry is missing its provider"
-        if not entry.get("verdict"):
-            return False, "a panel entry is missing its verdict"
-    distinct = {entry["provider"] for entry in panel}
-    if len(distinct) < min_providers:
-        return False, (f"panel has {len(distinct)} distinct provider(s); "
-                       f"min_providers requires at least {min_providers} — a single-model "
-                       f"panel is not a multi-model review")
+    reviewed = {entry["provider"] for entry in panel if entry.get("verdict")}
+    if len(reviewed) < min_providers:
+        return False, (f"panel has {len(reviewed)} provider(s) with a real verdict "
+                       f"(errored or empty dispatches do not count); min_providers requires at "
+                       f"least {min_providers} — an all-error or single-model dispatch is not a "
+                       f"multi-model review")
     return True, ""
 
 
@@ -305,9 +321,21 @@ def _run_self_test() -> int:
     ok, _ = validate_normalized(panel, 3)
     check("the same panel is refused when min_providers is 3", not ok)
     ok, _ = validate_normalized(normalize_panel({"a": {"provider": "a", "response": "x"}, "b": {"provider": "b", "response": "y"}}), 2)
-    check("an entry missing a verdict is refused", not ok)
+    check("verdict-less entries do not count toward the floor", not ok)
     ok, _ = validate_normalized(normalize_panel({"": {"status": "ok", "response": "x"}, "b": {"provider": "b", "status": "ok", "response": "y"}}), 2)
     check("an entry missing a provider is refused", not ok)
+    # an error-class status must not stand in as a verdict (the all-error gap)
+    check("an errored dispatch carries no verdict",
+          normalize_panel({"a": {"provider": "a", "status": "error", "response": ""}})[0]["verdict"] is None)
+    all_error = {"a": {"provider": "a", "status": "error", "response": ""},
+                 "b": {"provider": "b", "status": "timeout", "response": ""}}
+    ok, _ = validate_normalized(normalize_panel(all_error), 2)
+    check("an all-error two-provider panel is refused (no real review happened)", not ok)
+    mixed = {"a": {"provider": "a", "status": "ok", "response": "x"},
+             "b": {"provider": "b", "status": "ok", "response": "y"},
+             "c": {"provider": "c", "status": "error", "response": ""}}
+    ok, _ = validate_normalized(normalize_panel(mixed), 2)
+    check("two real verdicts plus one errored provider meets a floor of 2", ok)
 
     # repo-backed: record, staging, --bytes-stdin match/mismatch, staleness
     with tempfile.TemporaryDirectory() as td:
