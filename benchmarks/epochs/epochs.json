@@ -1,0 +1,15 @@
+{
+  "$comment": "Model alias -> resolved model id, per epoch. LLM-arm results are only comparable within one epoch (model-refresh-sentinel owns this file).",
+  "epochs": {
+    "e1": {
+      "start": "2026-07-17",
+      "aliases": {
+        "opus": "claude-opus-4-8",
+        "sonnet": "claude-sonnet-5",
+        "haiku": "claude-haiku-4-5-20251001",
+        "fable": "claude-fable-5"
+      }
+    }
+  },
+  "current": "e1"
+}

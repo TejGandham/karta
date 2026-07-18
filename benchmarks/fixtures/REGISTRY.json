@@ -1,0 +1,35 @@
+{
+  "$comment": "Shared fixture registry \u2014 every bench fixture is registered here with a sha256 pin. A vector may only consume fixtures through this registry; re-pin deliberately, never silently (bench-self-integrity audits this file).",
+  "fixtures": [
+    {
+      "id": "gringotts-browse-refinements-binder",
+      "path": "benchmarks/fixtures/gringotts-browse-refinements-binder-2026-07-17.json",
+      "sha256": "ac054b986725ec64a91afe107a26d81126344f1b3b1d78ac5f713a517df2d233",
+      "source": "../gringotts/.karta/binders/browse-refinements.json vendored 2026-07-17 (mid-delivery snapshot; delivery state as of inspection 2026-07-17T20:07Z: item-multi-tag-filter pending at wave-2-base, item-wide-screen-layout built+done — see results/2026-07-17-baseline.md correction (b): delivery state must be re-derived at run time, never trusted from this note)",
+      "used_by": [
+        "flow-spec-contradictions",
+        "consumer-upgrade-compat"
+      ]
+    },
+    {
+      "id": "seed-map-2026-07-17",
+      "path": "benchmarks/flow/seed-map-2026-07-17.json",
+      "sha256": "67bcc2413d58d6de3f4dccf14b897b665173d2d948f294ae00f2c4efd58ab443",
+      "source": "10-subsystem map of karta v2.21.0 produced by the 2026-07-17 bench-derivation session",
+      "used_by": [
+        "dark-ledger-burndown",
+        "flow-guard-enforcement-matrix",
+        "flow-spec-contradictions"
+      ]
+    },
+    {
+      "id": "evaltool-2026-07-17",
+      "path": "benchmarks/research/evaltool-2026-07-17.json",
+      "sha256": "bc8ae7fc1be4cac96490f3b54d11787f8a33e5125bb63051f640ae3ed750b942",
+      "source": "buy-vs-build research on bench tooling, 2026-07-17 (promptfoo chassis decision evidence)",
+      "used_by": [
+        "ownership-cost-ledger"
+      ]
+    }
+  ]
+}

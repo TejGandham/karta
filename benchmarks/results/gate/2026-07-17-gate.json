@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "run_date": "2026-07-17",
+  "karta_sha": "1696a3f03a7ef62efeb1ffc3c4dba8e1fa13f2dd",
+  "plugin_version": "2.21.0",
+  "strict": false,
+  "only": null,
+  "vectors": [
+    {
+      "id": "flow-guard-enforcement-matrix",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "flow-spec-contradictions",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "dark-ledger-burndown",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "dark-status-surface-probes",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "dark-midwave-crash-resume",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "field-delivery-state-audit",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "field-feature-adoption-ledger",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "field-companion-loop-health",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "sme-pack-static-suite",
+      "status": "PASS",
+      "partial": true,
+      "implemented_checks": [
+        "stack-pack format validation (validate_packs.py)"
+      ],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {
+        "packs_checked": 9,
+        "packs_failed": 0,
+        "warnings": 0,
+        "excluded": [
+          "skills/_shared/sme/platform-native.md"
+        ]
+      },
+      "detail": ""
+    },
+    {
+      "id": "sme-fixture-campaign",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "perf-context-latency-floors",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "perf-delivery-telemetry",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "perf-fixture-cost-baseline",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "quality-oracle-discrimination",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "quality-verify-integrity-drills",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "quality-doc-gardner-recall",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "parity-doc-truth-ledger",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "parity-mirror-sync-integrity",
+      "status": "PASS",
+      "partial": true,
+      "implemented_checks": [
+        "shared-copy byte parity",
+        "plugin manifest validation"
+      ],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {
+        "checks_run": 2,
+        "checks_failed": 0,
+        "not_implemented": [
+          "P1-exec-bit-projection",
+          "P2-lock-degradation-survival",
+          "P3-external-hash-liveness"
+        ]
+      },
+      "detail": ""
+    },
+    {
+      "id": "sec-untrusted-input-surfaces",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "release-gate-blocking-smoke",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "bench-self-integrity",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "ownership-cost-ledger",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "consumer-upgrade-compat",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    },
+    {
+      "id": "model-refresh-sentinel",
+      "status": "SKIPPED",
+      "partial": null,
+      "implemented_checks": [],
+      "findings_count": 0,
+      "findings": [],
+      "metrics": {},
+      "detail": "no probe yet"
+    }
+  ],
+  "summary": {
+    "total": 24,
+    "pass": 2,
+    "fail": 0,
+    "error": 0,
+    "skipped": 22
+  }
+}

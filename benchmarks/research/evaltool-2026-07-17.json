@@ -1,0 +1,482 @@
+{
+ "covered": [
+  "agent-bench-harnesses",
+  "eval-frameworks",
+  "claude-code-native",
+  "audit-scorecards",
+  "stats-telemetry"
+ ],
+ "missing": [],
+ "areas": [
+  {
+   "area": "agent-bench-harnesses",
+   "candidates": [
+    {
+     "name": "Harbor (laude-institute/harbor, ex Terminal-Bench harness)",
+     "url": "https://github.com/laude-institute/harbor",
+     "what_it_is": "General framework from the Terminal-Bench creators for evaluating arbitrary installed agents (Claude Code, OpenHands, Codex CLI, Aider, Goose are first-class adapters \u2014 src/harbor/agents/installed/claude_code.py exists) against task packages in Docker sandboxes. `harbor run --path ./my-task --agent claude-code --model ...` runs a single LOCAL custom task with no dataset or leaderboard involvement. Task = directory with task.toml (metadata, verifier config w/ timeout, agent timeout, environment resources, optional oracle solution script) + Dockerfile/prebuilt image + verifier script producing a reward. Supports n-attempts per trial, per-trial artifact download (--artifact /path), timeout multipliers, --no-verify, local orchestrator (default) or cloud (Daytona/Modal \u2014 optional, not required), Metrics base classes, sweeps, results as JSON files in a configurable jobs dir.",
+     "maturity": "Apache-2.0, 3,120 stars, 260 contributors, 24 releases, v0.18.0 released 2026-07-07, last push 2026-07-12; official harness of Terminal-Bench 2.0; pip/uv installable; fast-moving with documented breaking changes.",
+     "fit": "component",
+     "fit_detail": "The strongest 'sandboxed runner + task format + grading protocol' candidate for the QUANTITATIVE vectors: A/B arms (with/without SME pack = two task variants or two agent configs on the same fixture), per-version regression runs (same task dir, new plugin version baked into the image, results JSON committed and diffed), wall-clock timing, n-attempts for variance. It is explicitly NOT dataset-bound \u2014 local task dirs are a first-class path, and Claude Code is an installed-agent adapter, so 'run karta-plan/karta-deliver headlessly inside a container against a fixture repo, then run a deterministic verifier on the resulting git state' is squarely its shape. Snorkel's Senior SWE-Bench (2026-07) is Harbor-compatible and layers deterministic verifiers + rubric LLM judge + 'taste judge', proving the verifier slot can host LLM-as-judge scoring, not just pytest. Longitudinal comparison is DIY but trivial: point --jobs-dir into the repo and diff/aggregate the committed JSON.",
+     "gaps_for_bench": "No per-phase telemetry (tokens, agent spawns, per-skill wall-clock) \u2014 you'd harvest Claude Code session JSONL via --artifact and post-process yourself; token/cost accounting for the claude-code adapter is not confirmed. Interactive karta surfaces (karta-plan's in-chat review card + explicit 'commit' verb) don't fit a one-shot headless trial without scripted auto-approve. Qualitative audit vectors (doc accuracy, dark areas, SME-pack appropriateness, determinism-of-prose audits) run on karta's own markdown and need no sandbox \u2014 Harbor adds nothing there. No built-in version-over-version report. Container Claude Code needs ANTHROPIC_API_KEY (subscription OAuth in a container is awkward); on this machine Docker lives inside Incus, so Harbor itself must run inside vader-incus-docker-host or against a docker context \u2014 extra indirection.",
+     "adoption_cost": "Moderate: uv tool install; per-fixture Dockerfile + task.toml + verifier script; plugin version pinned by baking the karta checkout into the image (good for regression benching); ongoing cost = tracking a fast-moving 0.x framework (24 releases/year, breaking changes) \u2014 real but bounded for one person. The Incus-Docker indirection is the biggest local friction."
+    },
+    {
+     "name": "Terminal-Bench task package format (task.yaml convention)",
+     "url": "https://github.com/laude-institute/terminal-bench",
+     "what_it_is": "The original tb harness's task definition convention, now superseded by Harbor as the executing harness for TB 2.0: per-task directory with task.yaml (instruction, difficulty, category, tags, parser_name, max_agent_timeout_sec, max_test_timeout_sec, run_tests_in_same_shell, expert/junior time estimates), Dockerfile, docker-compose.yaml, run-tests.sh, tests/, an oracle solution.sh, and a mandatory anti-leakage canary string at the top of every task file.",
+     "maturity": "Very mature as a convention (the de-facto 2025-2026 standard for terminal-agent tasks; hundreds of community-contributed tasks); the tb harness itself is legacy \u2014 Harbor replaced it.",
+     "fit": "methodology-only",
+     "fit_detail": "Best available blueprint for upgrading benchmarks/sme fixture tasks into a durable format: instruction + environment spec + deterministic test script + oracle solution + metadata (incl. timeout budgets and difficulty) + canary string. Directly generalizes the existing sme fixture/two-arm layout without adopting any runner. The 'oracle solution must pass the tests' self-validation discipline (tb tasks create scaffolding, oracle-based CI check) is the piece the hand-rolled bench lacks.",
+     "gaps_for_bench": "A format, not a runner: no judge, no stats, no longitudinal machinery. Assumes Docker isolation per task, which karta's worktree-native flow doesn't require for audit-style vectors.",
+     "adoption_cost": "Near zero \u2014 copy the schema fields and the oracle-must-pass rule into the in-repo bench; no dependency taken."
+    },
+    {
+     "name": "SWE-bench evaluation harness + SWE-smith",
+     "url": "https://github.com/swe-bench/SWE-smith",
+     "what_it_is": "swebench.harness.run_evaluation: Docker-based, three-layer image architecture (base/env/instance) that applies a model patch to a pinned repo state, runs the test suite, and grades via FAIL_TO_PASS / PASS_TO_PASS test lists. SWE-smith (NeurIPS 2025 D&B) is the companion factory that turns an arbitrary (Python-centric) repository into unlimited synthetic task instances by breaking existing tests and generating issue text, each paired with a Docker environment.",
+     "maturity": "Extremely mature/canonical (swebench.com docs, thousands of citations); SWE-smith active through 2025; but 2026 sentiment (e.g. OpenAI distancing from SWE-bench Verified over contamination) pushes toward private repo-specific suites \u2014 which is what the karta owner is building anyway.",
+     "fit": "poor",
+     "fit_detail": "Its grading protocol (patch \u2192 run tests \u2192 FAIL_TO_PASS) is patch-level program repair on the evaluated REPO \u2014 karta-verify already implements exactly this idea natively (acceptance checks per work item), so importing the harness buys nothing the framework doesn't do itself. The one transferable idea is SWE-smith's task-instance factory pattern: programmatically generate many fixture work-items from a real repo to feed the bench, rather than hand-writing fixtures.",
+     "gaps_for_bench": "Dataset-bound in practice (instance IDs, prediction-file format, HF datasets); grades a patch, not an orchestration framework's flow, SME usage, determinism, or docs; Python-repo assumptions; no rubric/LLM-judge lane; no longitudinal tooling beyond report JSONs.",
+     "adoption_cost": "High for what you'd get \u2014 building instance images and prediction files for a private plugin bench is ceremony with no payoff; SWE-smith-style task synthesis could be reimplemented in ~a script."
+    },
+    {
+     "name": "HAL harness (princeton-pli/hal-harness)",
+     "url": "https://github.com/princeton-pli/hal-harness",
+     "what_it_is": "Princeton's standardized agent-evaluation harness behind the Holistic Agent Leaderboard (ICLR 2026 paper). Framework-agnostic contract \u2014 any scaffold exposes run(input)->dict \u2014 with three execution tiers (local, Docker, Azure VM), parallelization, automatic trace logging, and provider-agnostic cost/token accounting via W&B Weave. Supports adding custom benchmarks alongside swebench/usaco/taubench/etc.",
+     "maturity": "Backed by Princeton PLI/CITP, ICLR 2026 paper (arXiv 2510.11977), active repo since 2024, used for 21,730-rollout studies; unknown star count but institutionally maintained.",
+     "fit": "methodology-only",
+     "fit_detail": "Two importable ideas: (1) cost-per-result as a first-class default metric \u2014 exactly the per-phase tokens/cost vector the bench wants; (2) the thin run(input)->dict contract decoupling the thing-under-test from the runner, a good shape for wrapping headless karta invocations. Custom benchmarks are supported in principle, so it could technically host the quantitative lane.",
+     "gaps_for_bench": "Built for cross-agent leaderboard comparison at VM scale, not one private framework; Weave cost tracking pulls in a W&B account (SaaS-leaning \u2014 flag), and the leaderboard orientation is dead weight; heavier integration + maintenance than one person should carry for a periodic bench; no rubric/LLM-judge audit lane; longitudinal comparison is leaderboard-side, not committed-files-side.",
+     "adoption_cost": "High: conda/env setup, benchmark integration code, Weave/W&B wiring; disproportionate for a single-user local bench."
+    },
+    {
+     "name": "aider polyglot benchmark harness",
+     "url": "https://github.com/Aider-AI/aider/blob/main/benchmark/README.md",
+     "what_it_is": "benchmark/benchmark.py + Aider-AI/polyglot-benchmark: runs 225 hard Exercism exercises (6 languages) through aider inside a Docker container, per-exercise directed test execution, metrics = pass_rate_1/pass_rate_2 (first try vs after seeing test errors), percent_cases_well_formed, syntax/indentation error counts; results accumulate as dated run directories with JSON.",
+     "maturity": "Mature, continuously used for aider's public leaderboard through 2025-2026; harness is tightly coupled to aider as the agent.",
+     "fit": "methodology-only",
+     "fit_detail": "The closest existing analogue in SPIRIT to benchmarks/sme: simple dirs-of-exercises, a single Python runner, dated results files committed over time, and \u2014 the key import \u2014 the two-attempt metric pair (pass_rate_1 vs pass_rate_2) plus format-discipline metrics (percent_well_formed) which map cleanly onto karta vectors like 'binder valid on first synthesis vs after one retry' and 'verifier verdict well-typed'. Longitudinal story (leaderboard rebuilt from committed per-run YAML/JSON) matches the owner's results-as-committed-files constraint exactly.",
+     "gaps_for_bench": "Harness hard-codes aider as the agent \u2014 not reusable to drive Claude Code/karta without surgery; task format is Exercism-shaped single-file exercises, too small to exercise orchestration; no judge lane, no A/B arms.",
+     "adoption_cost": "Zero to copy the metric/result-file conventions; not worth adopting the code."
+    },
+    {
+     "name": "commit0",
+     "url": "https://github.com/commit-0/commit0",
+     "what_it_is": "From-scratch library-generation benchmark: 54 Python libraries with specs, heavy unit-test coverage, lint/type checks; pip-installable CLI (commit0 clone/build/test/evaluate, agent run) with isolated per-repo test environments and change logging.",
+     "maturity": "Cornell-affiliated, arXiv 2412.01769, active 2024-2025; niche adoption.",
+     "fit": "poor",
+     "fit_detail": "Only marginal relevance: its spec\u2192implementation\u2192unit-test grading loop and split-based evaluate command are ideas karta's acceptance checks already embody. Dataset-bound to its 54 curated libraries; the harness assumes its own repo scaffolding.",
+     "gaps_for_bench": "No custom-task path documented, no judge lane, no framework-behavior vectors, Python-only, no longitudinal machinery.",
+     "adoption_cost": "Not worth adopting; nothing to borrow that terminal-bench/Harbor don't provide better."
+    },
+    {
+     "name": "SWE-Lancer (openai/frontier-evals / preparedness)",
+     "url": "https://github.com/openai/frontier-evals/blob/main/project/swelancer/README.md",
+     "what_it_is": "OpenAI's freelance-SWE benchmark; original repo archived and merged into openai/preparedness (frontier-evals). Docker (monolith or per-task) offline execution, solver interface (DummySolver/SimpleAgentSolver), grading = triple-verified end-to-end Playwright-style tests for IC tasks, and for 'managerial' tasks the agent's chosen technical proposal is compared against the decision the real engineering manager made.",
+     "maturity": "OpenAI-backed, public since 2025-02, updated mid-2025, but lives inside a sprawling monorepo whose harness churns; effectively maintained for OpenAI's own eval needs.",
+     "fit": "methodology-only",
+     "fit_detail": "One genuinely novel import: the managerial-task grading protocol \u2014 score a DECISION against a known-good reference decision. That is the right grading shape for benching karta-plan (compare a synthesized binder against a reference binder from a real delivered feature, e.g. the binder-eol-dogfood precedent) and for SME-pack-selection appropriateness. Also a precedent for e2e tests as graders of agent-produced states.",
+     "gaps_for_bench": "Harness itself is heavyweight, OpenAI-stack-shaped, dataset-bound, and archived/relocated \u2014 adopting the code is a maintenance trap for one person; no rubric-judge lane beyond its fixed protocol; no longitudinal tooling.",
+     "adoption_cost": "Copy the reference-decision grading idea only; adopting the code would be high-cost, low-reward."
+    },
+    {
+     "name": "PawBench (agentscope-ai / Alibaba)",
+     "url": "https://github.com/agentscope-ai/PawBench",
+     "what_it_is": "A model \u00d7 harness CO-evaluation benchmark (v1.0: 9 models \u00d7 3 harnesses \u00d7 150 tasks) from the AgentScope/OpenJudge ecosystem. Treats the HARNESS as a first-class benchmark subject; identical task prompts/workspaces/contracts across harnesses; every task declares a grading_mode of automated | llm_judge | hybrid; diagnostic traces and leaderboard slices designed to attribute a regression to model vs harness vs grader; explicit 'iterate on a harness change, rerun the same task slice' workflow.",
+     "maturity": "Apache-2.0, young: created 2026-05-15, 92 stars, 6 contributors, last push 2026-07-14; backed by the AgentScope org.",
+     "fit": "methodology-only",
+     "fit_detail": "Conceptually the closest match to the bench's core premise in this whole category: it exists to evaluate agent FRAMEWORKS, not models, and its two design moves are directly liftable \u2014 (1) per-task declared grading_mode {automated, llm_judge, hybrid}, which is exactly the deterministic-checks-AND-rubric-judge duality the karta bench needs in its task schema; (2) regression attribution by rerunning a fixed task slice after a harness change, which is the version-over-version protocol. Worth watching for whether custom harnesses/tasks become pluggable.",
+     "gaps_for_bench": "Today it is its own 150-task dataset over its own three harnesses (OpenClaw/QwenPaw/Hermes-adjacent, not Claude Code); no documented path to plug in a private harness or private tasks yet; too young to bet the chassis on.",
+     "adoption_cost": "Zero to import the schema ideas; adopting the code today would mean forking a two-month-old benchmark repo."
+    }
+   ],
+   "verdict": {
+    "call": "adopt-component",
+    "rationale": "No harness in this category benches an orchestration framework's internal behavior (flow gaps, SME appropriateness, dark areas, doc accuracy, prose-determinism) out of the box \u2014 those vectors run on karta's own markdown and session logs and need judge/rubric machinery from another category. But the category is NOT all dataset-bound leaderboard rigs: two pieces are genuinely reusable. (1) The Terminal-Bench/Harbor task-package format (instruction + environment + oracle solution that must pass + deterministic verifier + metadata/timeouts + canary) is the right schema to grow benchmarks/sme into, at near-zero cost, augmented with PawBench's per-task grading_mode {automated, llm_judge, hybrid} field and SWE-Lancer's reference-decision grading for karta-plan binder quality. (2) Harbor itself is the one credible off-the-shelf runner: local custom task dirs are first-class (harbor run --path), Claude Code is a maintained installed-agent adapter, verifiers can be LLM judges (Senior SWE-Bench proves it on Harbor), results are plain JSON files committable to the repo, and Apache-2.0 + 3.1k stars + weekly releases make it safe to depend on \u2014 adopt it for the quantitative lane (A/B arms, per-version regression re-runs, timing, n-attempt variance) IF the owner accepts Docker-in-Incus indirection, API-key (not subscription) auth for containerized Claude Code, and tracking a fast-moving 0.x; otherwise keep the tiny in-repo runner and copy only the task format. Do not adopt SWE-bench/commit0/SWE-Lancer/aider harness code \u2014 for this use they are dataset- or agent-bound; their value is methodology (SWE-smith's task-factory idea, aider's pass_rate_1/2 + dated committed results, SWE-Lancer's managerial grading). Full 'buy' is wrong because per-phase telemetry (tokens, spawns, per-skill wall-clock from Claude Code session JSONL), longitudinal reporting, and all qualitative audit vectors remain hand-rolled on top of any of these."
+   },
+   "queries_run": [
+    "web_search_advanced: terminal-bench harness custom task definition format for evaluating AI coding agents locally (2025+)",
+    "web_search_advanced: HAL Holistic Agent Leaderboard harness Princeton evaluating agents custom benchmark local runs (2025+)",
+    "web_search_advanced: SWE-bench evaluation harness run on custom private repository tasks SWE-smith build your own task instances (2025+)",
+    "web_search_advanced: aider polyglot benchmark harness architecture how it runs and scores coding LLM exercises locally docker",
+    "get_code_context_exa: terminal-bench harbor run Claude Code agent on local custom task dataset path tb run --agent claude-code --dataset-path",
+    "web_search_advanced: commit0 benchmark harness and SWE-Lancer OpenAI benchmark open source harness grading protocol reusable",
+    "web_search_advanced: 2026 successor to SWE-bench terminal-bench new agentic coding evaluation harness supporting custom tasks and LLM judge verifier (2025-06+)",
+    "crawling_exa: harbor docs (cli/run, examples/terminal-bench, api/task-config, llms.txt) + github.com/laude-institute/harbor + github.com/agentscope-ai/PawBench maturity check"
+   ],
+   "key": "agent-bench-harnesses"
+  },
+  {
+   "area": "eval-frameworks",
+   "candidates": [
+    {
+     "name": "promptfoo",
+     "url": "https://github.com/promptfoo/promptfoo",
+     "what_it_is": "MIT-licensed TypeScript eval CLI (npx promptfoo). Declarative YAML test suites, providers = things that produce output, assertions = scorers. Runs fully local; results export to JSON/JSONL/CSV/HTML/JUnit files; local SQLite + local web viewer for run history.",
+     "maturity": "23.3k stars, 320 contributors, 419 releases, latest 0.121.19 (2026-07-14), pushed daily; VC-backed company (Promptfoo Inc); docs pages updated within the last week; 'used by OpenAI and Anthropic' per repo blurb.",
+     "fit": "whole-bench",
+     "fit_detail": "Covers almost the entire bench spec natively. (1) System under test: `anthropic:claude-agent-sdk` (alias `anthropic:claude-code`) provider runs headless Claude Code via the Agent SDK with `working_dir` pointed at a fixture copy of a real repo, `setting_sources: ['project']` to discover .claude skills, a `skills:` filter, `append_allowed_tools`/`permission_mode` for side effects, and `apiKeyRequired: false` to authenticate through the owner's existing local Claude Code session (monthly plan \u2014 no API key needed for the SUT). Alternatively the exec/custom-script provider (https://www.promptfoo.dev/docs/providers/custom-script/) runs ANY shell command, i.e. a literal `claude -p ...` wrapper script, which fits karta's plugin-install path better than the SDK. (2) A/B arms: the official 'Test Agent Skills' guide (https://www.promptfoo.dev/docs/guides/test-agent-skills/) is almost literally karta's benchmarks/sme precedent formalized \u2014 two fixture dirs identical except for the SKILL.md / rule pack, two labeled providers, same tests, side-by-side comparison; it even covers 'does the agent avoid the neighboring skill' (SME-pack-appropriateness vector). (3) Scoring: `llm-rubric` (JSON verdict {reason, score, pass}, pinnable judge provider/temperature) for qualitative audits; `agent-rubric` \u2014 an agentic judge (Claude Agent SDK or Codex) with read-only workspace access that can inspect the produced diff/repo before grading (exactly what auditing a karta-verify output or a built worktree needs); plus deterministic asserts (equals/contains/regex/javascript/python, JSON-schema `output_format`, and trajectory checks like tool-sequence) for the determinism vectors. (4) Committed files: `promptfoo eval --output results-<date>.json` slots directly into the existing dated-results-file convention; per-row + per-assertion JSONL available. There is also an 'Evaluate Coding Agents' guide and an agent-skill integration for having agents author configs correctly.",
+     "gaps_for_bench": "(a) Per-phase performance telemetry (tokens, wall-clock, agent spawns per karta-plan/deliver/verify phase) is invisible to promptfoo \u2014 it sees one provider call; the owner must harvest Claude Code session JSONL / hook-guard logs in the wrapper script and emit them as metadata/derived metrics (promptfoo surfaces custom provider metadata to assertions, so this is pluggable but hand-rolled). (b) Longitudinal version-over-version tracking is committed-output-files + a small trend script; promptfoo's built-in run comparison lives in the local SQLite/web viewer, not git. (c) Whole-binder karta-deliver runs (multi-worktree, tens of minutes) strain the one-provider-call-per-test model \u2014 timeouts and fixture reset (Managing Side Effects section warns about this) make it better suited to scoped fixture tasks than full end-to-end deliveries. (d) Node/TS ecosystem, not Python \u2014 helper glue diverges from karta's Python hooks. (e) Judge calls need an Anthropic/OpenAI key or the agent-SDK local-session trick.",
+     "adoption_cost": "Low. `npm i -g promptfoo` (plus optional @anthropic-ai/claude-agent-sdk), one promptfooconfig.yaml per bench vector next to fixtures, run periodically, commit --output JSON. No server, no DB to operate. Main ongoing cost is maintaining fixture dirs and the claude-wrapper/metrics-harvest script; promptfoo release cadence is fast but config format is stable."
+    },
+    {
+     "name": "Inspect AI (+ inspect_swe)",
+     "url": "https://github.com/UKGovernmentBEIS/inspect_ai",
+     "what_it_is": "UK AI Security Institute's MIT Python eval framework: Task = dataset + solver + scorer; model-graded and custom scorers; parallelism, limits, retries; sandboxing toolkit (Docker Compose/K8s/Proxmox); rich local .eval log files with a local viewer and dataframe extraction. Companion package inspect_swe (meridianlabs-ai/inspect_swe, by Inspect's own author jjallaire) provides Claude Code, Codex CLI, Gemini CLI, OpenCode and Mini-SWE agents as Inspect solvers running inside sandboxes.",
+     "maturity": "inspect_ai: 2.3k stars, 260 contributors, government-backed, pushed 2026-07-13, 200+ prebuilt evals in inspect_evals. inspect_swe: young (23 stars, created 2025-08-29) but actively developed (pushed 2026-07-10) and maintained by the Inspect core team.",
+     "fit": "whole-bench",
+     "fit_detail": "The most rigorous chassis on offer: custom task suites are first-class Python; model_graded_qa with custom rubric templates covers LLM-as-judge; custom scorers cover deterministic checks; .eval logs are self-contained files that can be committed per dated run and later loaded as dataframes for longitudinal version-over-version stats \u2014 the best committed-artifact + analysis story of any candidate. inspect_swe proves the 'spawn Claude Code as the system under test' path exists off the shelf: it installs and drives the actual claude CLI inside a Docker sandbox against a repo image, so a karta bench task could bake the plugin + fixture repo into a sandbox image and score the resulting diff. Eval-set/epochs support gives repeat-sampling for variance, which the quantitative vectors (tokens, timings, counts) benefit from.",
+     "gaps_for_bench": "Sandbox-first design fights this owner's constraints: on this machine Docker is only reachable through Incus, so every bench run means image bakes and Incus indirection; inspect_swe agents authenticate via API key inside the sandbox (using the local Claude subscription session is awkward); A/B arm comparison is not a built-in concept (run task variants and diff logs yourself); no native notion of per-phase breakdown of an orchestration framework \u2014 same DIY telemetry harvesting as promptfoo; Python framework concepts (solvers/scorers/stores) are more machinery than a one-person periodic bench needs; .eval binary-ish logs are less greppable in a repo than promptfoo's plain JSON.",
+     "adoption_cost": "Medium-high for this user. pip install inspect-ai + inspect_swe, write Python tasks, and stand up Docker sandbox images containing the karta plugin \u2014 non-trivial here because Docker rides behind Incus. Ongoing maintenance: rebuilding sandbox images per plugin version under test. Solid choice if the bench later needs isolation of full karta-deliver runs or heavier statistics; oversized as the starting chassis."
+    },
+    {
+     "name": "DeepEval",
+     "url": "https://github.com/confident-ai/deepeval",
+     "what_it_is": "Apache-2.0 Python 'pytest for LLMs': 50+ metrics, G-Eval (rubric LLM-judge), DAG and fully custom metrics, agent/trace evaluation; v4.0 (2026-05-13) added an 'Eval Harness for Coding Agents' and a TUI for trace inspection. 17k stars.",
+     "maturity": "17k stars; v4.0.2 released 2026-05-13; backed by Confident AI (the metrics library is OSS, the tracking dashboard is their SaaS).",
+     "fit": "component",
+     "fit_detail": "Borrow the judge layer, not the chassis: G-Eval / DAG / custom metrics are plain Python callables, so a hand-rolled or pytest-based karta bench runner (Python, matching karta's existing hooks/scripts language) could import DeepEval metrics to get calibrated rubric scoring with score+reason JSON, thresholds, and pytest-style pass/fail \u2014 usable directly from the existing benchmarks/sme runner. The system under test being 'any Python function' means a subprocess wrapper around `claude -p` works. The new coding-agent harness and trace TUI signal the roadmap is converging on this exact use case and are worth re-checking in 6 months.",
+     "gaps_for_bench": "No native CLI-agent provider or fixture-workspace concept \u2014 spawning Claude Code, resetting fixtures, and diff capture are all yours; A/B arm comparison and longitudinal run tracking are where DeepEval steers you to the Confident AI SaaS (flag: local-only longitudinal comparison means writing your own dated-JSON convention, which the owner already has); heavier pip dependency tree than a six-script bench wants; no workspace-inspecting agentic judge like promptfoo's agent-rubric.",
+     "adoption_cost": "Low-medium as a library (pip install deepeval, no server, no account required for metrics); medium if fighting its telemetry/SaaS nudges matters to you (opt-outs exist). Fits karta's Python tooling better than promptfoo's Node if the owner prefers extending the hand-rolled runner instead of replacing it."
+    },
+    {
+     "name": "Braintrust (platform) / autoevals (library)",
+     "url": "https://github.com/braintrustdata/autoevals",
+     "what_it_is": "Braintrust is a commercial eval/observability platform (Eval() SDK, datasets, experiments, diff views between runs). autoevals is their small MIT OSS scorer library (TS + Python): LLM-judge scorers (Factuality, Battle/pairwise, ClosedQA, Humor, Security) plus heuristic scorers, each returning score+rationale.",
+     "maturity": "Braintrust: well-funded, widely adopted commercially; SaaS-first \u2014 self-host is an enterprise hybrid deployment, not a laptop install. autoevals: modest but stable OSS, maintained alongside the platform.",
+     "fit": "component",
+     "fit_detail": "The Braintrust platform's experiment-diff UX (compare run N vs run N-1 across a dataset) is the best-in-class mental model for the longitudinal vector \u2014 worth imitating in the bench's trend script. autoevals' Battle/pairwise scorer is directly reusable for the A/B arms (judge sees both arms' outputs and picks a winner with rationale), a scoring mode karta's SME bench currently lacks; it's importable from either TS or Python with no platform account.",
+     "gaps_for_bench": "Platform is SaaS-only for practical purposes (results live in their cloud \u2014 violates committed-files and no-SaaS constraints; flag). autoevals alone provides no runner, no task format, no CLI-agent spawning, no persistence \u2014 pure scorers.",
+     "adoption_cost": "autoevals: trivial (one pip/npm dependency + judge API key). Braintrust platform: not viable under the no-SaaS constraint."
+    },
+    {
+     "name": "Langfuse (representative of the self-hosted eval/observability platform class: Comet Opik, Arize Phoenix, W&B Weave)",
+     "url": "https://langfuse.com",
+     "what_it_is": "Open-source LLM observability + evals platforms: traces, datasets, LLM-as-judge evaluators, dashboards. Langfuse and Opik are Apache/MIT self-hostable via docker compose (Langfuse needs Postgres + ClickHouse + Redis/blob store; Opik similar multi-service); Phoenix is lighter (pip-installable local server); Weave is effectively W&B SaaS.",
+     "maturity": "All active and popular in 2025-2026 (Langfuse and Opik each >10k stars class, frequent releases, heavy comparison-article presence).",
+     "fit": "poor",
+     "fit_detail": "Only plausible role: an optional trace sink if the owner ever instruments karta runs with OTel to eyeball per-phase spans in a UI. Their LLM-as-judge evaluators run over ingested traces, so in principle the qualitative vectors could be scored there.",
+     "gaps_for_bench": "Wrong shape on nearly every constraint: results live in a server database, not committed files; they observe an instrumented app rather than spawning a CLI agent as SUT (Claude Code sessions aren't OTel-instrumented without extra work); running a multi-container service (through Incus-wrapped Docker, here) is exactly the standing maintenance a single power user doesn't want; version-over-version comparison exists but inside the dashboard, not in git. Class verdict: watch, don't adopt.",
+     "adoption_cost": "High relative to value: docker compose stack (behind Incus on this machine), DB persistence/upgrades, plus instrumentation work \u2014 all for dashboards the committed-files convention already replaces."
+    },
+    {
+     "name": "OpenAI Evals",
+     "url": "https://github.com/openai/evals",
+     "what_it_is": "The original OSS eval framework + registry (YAML registry, JSONL datasets, model-graded evals). 18.9k stars but effectively dormant; OpenAI's own docs now say 'OpenAI now has a hosted evals product with an API! We recommend you use this instead' and evals.openai.com is a benchmark showcase (GDPval), not the framework.",
+     "maturity": "Dormant OSS (no meaningful maintenance signal in 2025-2026); superseded by OpenAI's hosted Evals API (SaaS).",
+     "fit": "poor",
+     "fit_detail": "Historical reference only: its registry layout (YAML eval definitions + JSONL samples + model-graded templates) is a clean pattern to crib for organizing karta bench task files, and its modelgraded rubric templates are decent prompt prior art.",
+     "gaps_for_bench": "Unmaintained; OpenAI-centric completion-function model with no CLI-agent story; successor is SaaS-only; no longitudinal or A/B tooling relevant here.",
+     "adoption_cost": "N/A \u2014 do not adopt; skim the repo layout for format ideas at most."
+    }
+   ],
+   "verdict": {
+    "call": "buy",
+    "rationale": "Adopt promptfoo as the bench chassis. It is the only candidate that natively covers the full constraint stack: spawns headless Claude Code as the system under test (claude-agent-sdk provider with working_dir/skills/permission_mode and local-session auth via apiKeyRequired:false, or the exec custom-script provider wrapping literal `claude -p` \u2014 which best matches karta's plugin-install reality), formalizes exactly the existing benchmarks/sme A/B pattern (its official 'Test Agent Skills' guide is two fixture dirs differing only in the skill/rule-pack, labeled provider arms, identical tests, side-by-side scoring \u2014 including the 'did it wrongly trigger the neighboring skill' case, i.e. the SME-appropriateness vector), supports both scoring modes the bench needs (llm-rubric with pinned judge + JSON verdict for qualitative audits; agent-rubric giving the judge read-only workspace access to inspect produced diffs; deterministic asserts/JSON-schema/trajectory checks for the determinism vectors), and writes results as plain local files (--output JSON/JSONL per dated run, committable, continuing the current honesty convention) with zero server to operate \u2014 MIT, 23k stars, very active, single npm install. Two honest caveats keep this 'buy with known gaps' rather than 'buy everything': (1) per-phase performance telemetry (tokens/wall-clock/agent-spawns inside karta-plan/deliver/verify) is invisible to any framework surveyed \u2014 it must come from the owner's own hook logs / Claude session JSONL parsing, fed into promptfoo as provider metadata or kept as a sibling collector script; (2) longitudinal version-over-version comparison in git is committed output files + a small trend script (promptfoo's built-in comparison is local SQLite/web-viewer, not git-native). Neither gap is filled better by any alternative. Components worth borrowing on top: autoevals' Battle pairwise scorer for A/B judging, and DeepEval's G-Eval if the owner prefers extending the existing Python runner instead (making DeepEval the fallback 'adopt-component' path). Inspect AI (+ inspect_swe) is the credible second chassis if the bench later needs sandboxed full karta-deliver runs or heavier repeat-sampling statistics, but its Docker-sandbox-first design (behind Incus on this machine) and API-key auth make it oversized for a one-person periodic bench today. The observability platform class (Langfuse/Opik/Phoenix/Weave) and OpenAI Evals fail the committed-files / no-standing-service / CLI-agent-SUT constraints \u2014 watch at most."
+   },
+   "queries_run": [
+    "web_search_advanced_exa (2025+): Inspect AI UK AISI evaluation framework custom agent tasks sandbox scorer model-graded local logs",
+    "web_search_advanced_exa (2025+): promptfoo evaluate CLI coding agent exec provider llm-rubric assertions local yaml results file A/B comparison",
+    "web_search_advanced_exa (2025+): Inspect AI agent bridge run Claude Code claude agent SDK as solver system under test",
+    "get_code_context_exa: promptfoo exec provider run shell command CLI agent as provider promptfooconfig.yaml example",
+    "web_search_advanced_exa (2025-06+): promptfoo Claude Agent SDK provider claude code CLI agent evaluation documentation",
+    "web_search_advanced_exa (2025-06+): DeepEval open source LLM evaluation framework G-Eval custom metrics pytest agent evaluation 2026",
+    "crawling_exa: promptfoo.dev claude-agent-sdk provider docs + test-agent-skills guide (full text)",
+    "get_code_context_exa: inspect_swe UKGovernmentBEIS run Claude Code agent inside Inspect AI sandbox evaluation",
+    "web_search_advanced_exa (2025-06+): comparison 2026 open source LLM eval platforms Langfuse Opik Phoenix Braintrust Weave self-hosted local-first offline experiments",
+    "web_search_advanced_exa: OpenAI Evals repository deprecated archived status 2025 successor",
+    "crawling_exa: GitHub repo metadata for promptfoo/promptfoo, UKGovernmentBEIS/inspect_ai, meridianlabs-ai/inspect_swe"
+   ],
+   "key": "eval-frameworks"
+  },
+  {
+   "area": "claude-code-native eval tooling (skill-creator evals, headless claude -p substrate, community skill/plugin/hook harnesses, Codex CLI equivalents)",
+   "candidates": [
+    {
+     "name": "skill-creator evals + benchmark (Anthropic official, already installed)",
+     "url": "https://github.com/anthropics/skills/tree/main/skills/skill-creator",
+     "what_it_is": "Anthropic's official skill-authoring plugin (announced 2026-03-03) with a built-in eval system, inspected locally at /home/dev/.claude/plugins/marketplaces/anthropic-agent-skills/skills/skill-creator. Machinery: evals/evals.json task format (prompt, expected_output, files, assertions); dual-arm subagent runs per test case (with-skill vs no-skill, or old-skill via snapshot \u2014 exact generalization of the repo's benchmarks/sme A/B pattern); timing capture (total_tokens, duration_ms per run); grader subagent (agents/grader.md) producing grading.json with text/passed/evidence; scripts/aggregate_benchmark.py producing benchmark.json/benchmark.md with pass_rate, time, tokens as mean\u00b1stddev and delta per configuration; analyzer pass (agents/analyzer.md) flagging non-discriminating assertions, high-variance/flaky evals, time/token tradeoffs; blind A/B comparator (agents/comparator.md); HTML eval viewer with --previous-workspace iteration-over-iteration comparison; separate claude -p-driven description-trigger optimization loop (run_loop.py, 60/40 train/test split, 3 runs per query).",
+     "maturity": "Official Anthropic; in claude-plugins-official and anthropics/skills; shipped Mar 2026, actively maintained; zero install cost \u2014 it is already in the owner's plugin cache.",
+     "fit": "component",
+     "fit_detail": "Covers the skill-level vectors nearly whole: SME-pack A/B (with-pack vs without-pack = with-skill vs baseline arms), version-over-version skill regression (snapshot old skill as baseline arm), per-phase performance (tokens + wall-clock + pass-rate with variance/stddev \u2014 the requested variance analysis exists in aggregate_benchmark.py), LLM-grader rubric scoring with evidence fields, blind pairwise comparison for 'did vN beat vN-1', and committed-file results (iteration dirs of JSON/MD). The grader/benchmark JSON schemas, aggregate_benchmark.py, and the analyzer/comparator agent prompts are directly liftable into the existing benchmarks/sme runner without adopting the interactive workflow.",
+     "gaps_for_bench": "Eval unit is one subagent handed one skill path \u2014 it cannot run the full plan\u2192deliver\u2192verify pipeline: hook guards do not fire under the plugin's real settings in a Task-subagent arm, no isolated fixture-repo or CLAUDE_CONFIG_DIR management, no multi-skill orchestration scenario. Longitudinal tracking is per-iteration inside a workspace, not a cross-plugin-version time series. Core loop is human-in-the-loop (browser viewer, feedback.json) \u2014 designed for interactive skill improvement sessions, not unattended periodic bench runs. No doc-accuracy or dark-area audit vectors.",
+     "adoption_cost": "Near zero: installed already; repurposing means calling its scripts and copying its schemas, skipping the viewer loop. Runs on subscription auth (subagents), no API key."
+    },
+    {
+     "name": "crucible (crucible-ci)",
+     "url": "https://github.com/klashkaan-cmyk/crucible",
+     "what_it_is": "\"Regression CI for Claude Code configs \u2014 test your skills, subagents, hooks & CLAUDE.md like code.\" Per scenario: copies a fixture into a throwaway git worktree, points Claude Code at the config under test via CLAUDE_CONFIG_DIR (real ~/.claude untouched), injects PostToolUse + SubagentStop capture hooks logging every tool/subagent that fired, runs claude -p --output-format json capturing result/turn-count/total_cost_usd, applies deterministic + LLM-judge assertions, repeats k times reporting pass@k/pass^k/variance/flaky flags, keeps baselines + transcript diffs, has bisect-to-offending-commit, exits non-zero + JUnit for CI gating. Also gated self-improvement modes (optimize/research) that open PRs.",
+     "maturity": "v0.1 alpha; 1 star, 1 contributor (throwaway-style username klashkaan-cmyk), created 2026-05-30, last push 2026-06-06 \u2014 ~6 weeks stale at review time. On npm as crucible-ci. MIT.",
+     "fit": "whole-bench",
+     "fit_detail": "Conceptually the exact product: it evaluates the agent CONFIG (skills/hooks/CLAUDE.md) behaving on a real task, not the model \u2014 covering execution-flow gaps (capture-hook log of what actually fired vs expected), determinism (k-repeat variance + flaky flagging), per-phase cost/turns, regression via baselines + transcript diffs, and CI-committable results. Its architecture \u2014 CLAUDE_CONFIG_DIR isolation, injected capture hooks, pass@k over headless runs, baseline diffs \u2014 is the blueprint for the karta bench's pipeline-level runner even if the tool itself is not adopted.",
+     "gaps_for_bench": "Maturity is the disqualifier: single anonymous author, alpha, no community, activity stopped \u2014 betting the bench chassis on it contradicts the low-maintenance constraint. Targets a .claude dir rather than a plugin (mappable but untested). Qualitative rubric audits (doc accuracy, dark areas, SME-pack appropriateness) and long-horizon version-over-version trend files are not its focus. Uses API-metered headless runs (cost).",
+     "adoption_cost": "npm install + scenario authoring if adopted; realistically the cost is reading its ~weekend-sized TypeScript source and re-implementing the isolation + capture-hook pattern in the repo's own Python."
+    },
+    {
+     "name": "@wix/pathgrade",
+     "url": "https://github.com/wix-incubator/pathgrade",
+     "what_it_is": "Vitest-based agent eval framework from Wix's incubator: write evals as plain .eval.ts files; runs Claude Code, Codex CLI, or cursor-agent in an isolated sandbox workspace + isolated HOME; seeds trials from fixtures, real skills, or mocked MCP servers; scores with deterministic checks, rubric judges, and tool-usage assertions; preserves workspaces and run snapshots for debugging; same evals locally and in CI. Notably reuses the agent CLI's native auth (Claude Code OAuth from keychain / env keys) rather than requiring raw API keys.",
+     "maturity": "0 stars but corporate-incubator backing (Wix), published to npm, created 2026-06-17, active primary author (29 contributions). Very young.",
+     "fit": "component",
+     "fit_detail": "Strongest external chassis for the runner+scoring layer: isolated-sandbox trials against a real Claude Code binary means plugin skills AND hooks genuinely fire; tool-usage assertions + rubric judges cover both deterministic and LLM-judge vectors in one framework; Vitest gives free test organization, reporters, and CI/local parity. Cross-agent support gives a free Codex comparison arm if ever wanted. Fixture seeding matches the benchmarks/sme fixture-task pattern.",
+     "gaps_for_bench": "No built-in longitudinal version-over-version statistics or trend files \u2014 comparing plugin v2.21 to v2.22 across months is DIY on top of its reports. Brings a Node/TypeScript/Vitest toolchain into a Python/markdown repo. Skill-discovery orientation; multi-skill full-pipeline scenarios (plan\u2192deliver in waves) would be long, expensive single tests. Isolated HOME means installing karta into the sandbox per run (setup scripting). Too young to be certain Wix keeps investing.",
+     "adoption_cost": "yarn add + vitest config + eval authoring in TS; moderate one-person maintenance and a second language toolchain in the repo."
+    },
+    {
+     "name": "cc-plugin-eval",
+     "url": "https://github.com/sjnims/cc-plugin-eval",
+     "what_it_is": "4-stage evaluation framework specifically for Claude Code PLUGIN component triggering: (1) deterministic analysis of plugin structure extracting trigger phrases for skills/agents/commands/hooks/MCP; (2) LLM-generated test scenarios \u2014 direct, paraphrased, edge_case, negative, semantic; (3) execution via Claude Agent SDK with tool-capture hooks; (4) programmatic trigger detection first, LLM judge for quality. Checkpoint/resume, pre-run cost estimation, Anthropic Batch API for 50% cost cut, JSON/YAML/JUnit/TAP outputs.",
+     "maturity": "20 stars, the most production-shaped community option: CI, codecov, dependabot, 254 author contributions, created 2026-01-01, active.",
+     "fit": "component",
+     "fit_detail": "Directly covers one bench vector done well: activation appropriateness \u2014 do karta's skills/agents/hooks trigger when they should and stay quiet when they should not (its auto-generated negative/near-miss scenarios map to the 'appropriateness of SME pack usage' and under-specified dark-area probes). JUnit/JSON outputs commit cleanly as dated results files; runnable periodically per plugin version.",
+     "gaps_for_bench": "Measures activation, not behavior quality, output correctness, or per-phase performance; no A/B arms, no rubric audit of docs/flow, no longitudinal trend comparison built in. Requires ANTHROPIC_API_KEY (metered) rather than subscription auth.",
+     "adoption_cost": "Clone + npm build + API key; low per-run effort (point it at the karta plugin dir), modest cost per full run \u2014 cost estimator and Batch mode mitigate."
+    },
+    {
+     "name": "skillprobe",
+     "url": "https://github.com/smdysk/skillprobe",
+     "what_it_is": "Behavioral test harness for individual Claude Code skills: YAML scenarios run a skill in an isolated fixture workspace + throwaway HOME via headless claude, asserting on response text, transcript tool calls, and filesystem effects (output_contains, tool_used/tool_not_used, file_contains, no_writes_outside, max_turns_used). Signature idea: 'trap scenarios' \u2014 fixtures seeded with a known defect the skill must catch, so happy-path-only skills are not considered tested. JSON report schema; also drivable from inside Claude Code as a skill.",
+     "maturity": "Created 2026-07-11 (six days before this review), 0 stars, 12 open issues, not yet on npm. Infant.",
+     "fit": "methodology-only",
+     "fit_detail": "Two ideas worth stealing verbatim: (1) trap scenarios map one-to-one onto benching karta-verify (seed a defective diff, assert the typed verdict catches it) and the six hook guards (seed a violation, assert the guard halts); (2) its assertion vocabulary (tool_used, no_writes_outside, max_turns_used) is a compact, proven schema for deterministic transcript checks the bench needs anyway.",
+     "gaps_for_bench": "Single-skill scope, no rubric/LLM-judge scoring, no benchmark statistics, no A/B, no longitudinal anything; too new to depend on and must be built from source.",
+     "adoption_cost": "As a dependency: high risk. As a design to copy: an afternoon of schema reading (docs/SPEC.md, docs/report-schema.md)."
+    },
+    {
+     "name": "claude-code-hook-tester",
+     "url": "https://github.com/VoxCore84/claude-code-hook-tester",
+     "what_it_is": "Python 'universal hook test harness' for Claude Code: auto-discovers hooks from settings, feeds them mock event payloads, CI-friendly assertions on hook exit codes/output.",
+     "maturity": "v1.0.0 (2026-03-13), 0 stars, single contributor, no activity since release.",
+     "fit": "component",
+     "fit_detail": "Addresses exactly one bench vector \u2014 deterministic regression tests of the six Python hook guards (the most 'enforced checks over skippable prose' vector, matching the owner's determinism preference). Mock-payload approach mirrors what the verified hook payload shapes (top-level agent_type/agent_id) require.",
+     "gaps_for_bench": "The guards are plain stdin-JSON Python scripts; a pytest file with golden payload fixtures achieves the same in an afternoon with zero new dependency \u2014 the tool adds auto-discovery, little else. Covers nothing outside hooks.",
+     "adoption_cost": "Trivial to try, but hand-rolled pytest golden-payload tests are probably cheaper than adopting an inactive 0-star dependency."
+    },
+    {
+     "name": "claude -p headless + Claude Agent SDK (official substrate)",
+     "url": "https://github.com/anthropics/claude-agent-sdk-python",
+     "what_it_is": "The official programmatic substrate every option above wraps: claude -p --output-format json/stream-json returns result, num_turns, total_cost_usd, session id; session JSONL transcripts land under ~/.claude/projects for transcript mining; CLAUDE_CONFIG_DIR + isolated HOME select the config/plugin-version under test; Agent SDK (Python/TS, v0.2.119 as of 2026-07-14) adds typed streaming, hook-event observation, tool permissions, structured output \u2014 its e2e-tests directory (test_hooks.py, test_hook_events.py, test_tool_permissions.py, test_structured_output.py) is a working pattern library for asserting on hook and agent behavior.",
+     "maturity": "Official Anthropic, 7.6k stars, 126 releases, pushed 2026-07-15. The one dependency guaranteed to track Claude Code itself.",
+     "fit": "component",
+     "fit_detail": "The bench's runner layer: the ONLY way to exercise the real thing \u2014 plugin skills triggering, all six hook guards firing under real settings, worktree waves executing \u2014 is a real headless Claude Code session, which this provides with machine-readable cost/turn/transcript output for free. Pin one plugin version per CLAUDE_CONFIG_DIR and the same scenario replayed across versions gives the longitudinal axis; JSON results are committed files by construction.",
+     "gaps_for_bench": "Substrate only: no task format, no graders, no rubric judging, no stats/variance, no trend comparison \u2014 all the bench semantics remain to build on top.",
+     "adoption_cost": "Zero install (already the daily driver); cost is authoring the thin Python runner around it \u2014 which benchmarks/sme has already prototyped."
+    },
+    {
+     "name": "Anthropic 'Demystifying evals for AI agents' + adjacent official methodology",
+     "url": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents",
+     "what_it_is": "Anthropic engineering's agent-eval design guide (2026-01-09), written from shipping Claude Code: task/trial/grader/transcript/outcome/eval-harness/suite vocabulary; combine code-based, model-based, and human graders (deterministic where possible, LLM where necessary); LLM-judge calibration rules (per-dimension isolated judges, structured rubrics, an 'Unknown' escape hatch); pass@k vs pass^k for non-determinism; strict trial isolation (explicit warning that agents cheated by reading git history left over from previous trials \u2014 directly relevant to a git-native framework like karta); 'read the transcripts' discipline; promote stable tasks into a regression suite; start with 20-50 tasks sourced from real failures. Companion pieces: cookbook building_evals notebook and tool-evaluation recipe; OpenAI's Codex-side equivalent 'Testing Agent Skills Systematically with Evals' (2026-01-22) says the same for Codex skills \u2014 confirming there is no Codex-native bench product to buy either, only codex exec --json/--output-schema as a parity substrate.",
+     "maturity": "Official, current (Jan 2026), free.",
+     "fit": "methodology-only",
+     "fit_detail": "The design document for whatever gets built: gives the bench its schema (suite\u2192task\u2192trials\u2192graders\u2192metrics), its mixed-grader policy matching the exact requirement (LLM-as-judge rubric + deterministic checks), its variance metrics, and its isolation checklist \u2014 the git-history-leakage warning should directly shape how karta bench fixture repos are cloned per trial.",
+     "gaps_for_bench": "No code shipped; everything must be implemented.",
+     "adoption_cost": "One careful read; encodes as a docs/bench-design.md and a JSON schema."
+    }
+   ],
+   "verdict": {
+    "call": "adopt-component",
+    "rationale": "No whole-bench buy exists in the claude-code-native space. The one product aimed at exactly this problem \u2014 crucible, regression CI for .claude configs with deterministic+judge assertions, pass@k, baselines, transcript diffs \u2014 is a 1-star, single-anonymous-author v0.1 alpha whose activity stopped in June 2026; adopting it as chassis violates the low-maintenance constraint, though its architecture (CLAUDE_CONFIG_DIR isolation, injected PostToolUse/SubagentStop capture hooks, k-repeat variance) is the correct blueprint to copy. The pragmatic winning combination is already sitting in the owner's environment: (1) claude -p headless JSON / Agent SDK as the runner substrate \u2014 the only way real plugin hooks and multi-skill orchestration actually execute, with cost/turns/transcripts machine-readable and results committable as files; (2) skill-creator's eval machinery (already installed, official) as the skill-level A/B layer \u2014 its evals.json task format, grader schema with evidence fields, aggregate_benchmark.py mean\u00b1stddev/delta stats, analyzer flake detection, and blind comparator directly upgrade benchmarks/sme with zero new dependencies, covering SME-pack A/B, per-phase token/time metrics, and version-vs-version arms via skill snapshots; (3) the Demystifying-evals guide as the bench schema (suite/task/trial/grader, deterministic-first + calibrated per-dimension LLM judges, pass@k vs pass^k, trial isolation incl. the git-history-leakage trap that is acutely relevant to git-native karta). What still must be hand-rolled is comparatively thin: the pipeline-level scenario runner (fixture repo + pinned plugin version per CLAUDE_CONFIG_DIR, crucible-style capture hooks) and a longitudinal results ledger (dated JSON per plugin version + trend comparison), since NO surveyed tool ships version-over-version tracking. Watch cc-plugin-eval (most mature community option) for the trigger-appropriateness vector and pathgrade (Wix) as a possible future chassis; steal skillprobe's trap-scenario pattern for benching karta-verify and the hook guards. Codex-side offers methodology parity only (codex exec --json), nothing to buy."
+   },
+   "queries_run": [
+    "web_search_advanced_exa (2025+): Anthropic skill-creator plugin evals benchmark skill performance variance analysis Claude Code skills",
+    "web_search_advanced_exa (2025+): claude -p headless mode --output-format json programmatic eval harness regression testing Claude Code agent behavior",
+    "get_code_context_exa: GitHub repo harness to regression-test Claude Code skills plugins slash commands hooks, run claude CLI on fixture prompts and assert on transcript",
+    "web_search_advanced_exa (2025+): Anthropic cookbook agent evaluation patterns LLM-as-judge grader agent trajectory evals claude agent SDK",
+    "web_search_advanced_exa (2025+): OpenAI Codex CLI eval harness regression testing prompts AGENTS.md automation codex exec benchmark",
+    "crawling_exa: crucible, pathgrade, cc-plugin-eval, skillprobe repos + skill-creator announcement blog + memexlab agent-eval-guide",
+    "web_search_exa: Anthropic engineering blog demystifying evals for AI agents harness task trial grader transcript",
+    "local inspection: /home/dev/.claude/plugins/marketplaces/anthropic-agent-skills/skills/skill-creator (SKILL.md, agents/, scripts/, eval-viewer/)"
+   ],
+   "key": "claude-code-native"
+  },
+  {
+   "area": "audit-scorecards \u2014 structured audit/scorecard methodologies for the qualitative bench vectors (execution-flow gaps, dark areas, determinism, SME-pack appropriateness), scored repeatably across months-apart runs",
+   "candidates": [
+    {
+     "name": "OpenSSF Scorecard probe/check architecture",
+     "url": "https://github.com/ossf/scorecard",
+     "what_it_is": "The reference pattern for automated repo scorecards: ~44 'probes' (small deterministic heuristics, each with a def.yml carrying motivation/implementation/remediation) emit binary findings (OutcomeTrue/False/NotApplicable); 'checks' aggregate probes into 0-10 tiered scores with risk weights (Critical=10..Low=2.5); Structured Results expose per-probe JSON so consumers can bypass the aggregate and apply custom policy (OPA/Rego). v6 (2026 roadmap, PR #4952) splits this into a framework-agnostic evidence layer (scorecard.dev/evidence/v0.1) plus parallel score and PASS/FAIL conformance layers.",
+     "maturity": "Very mature: OpenSSF/Linux Foundation flagship, active since 2020, v5 shipped Structured Results, v6 proposal in flight 2026; thousands of stars, weekly public scans.",
+     "fit": "methodology-only",
+     "fit_detail": "The single best architectural template for karta's deterministic audit vectors. Model each 'dark area'/determinism/doc-accuracy heuristic as a probe with a def.yml-style card (what it detects, why, remediation), emit binary findings as JSON, aggregate into per-vector 0-10 scores with declared weights, and keep the finding layer separate from the score layer so months-apart runs stay comparable even when weights change. The tiered non-proportional scoring (must clear tier N before tier N+1 points count) maps well to maturity-style vectors like determinism (enforced halt > warning > prose).",
+     "gaps_for_bench": "The tool itself is Go + hardwired to supply-chain security checks on git forges \u2014 none of its actual probes apply to a markdown-skill plugin, and it has no LLM-judge layer, no wall-clock/token measurement, no A/B arms. You borrow the shape, not the binary.",
+     "adoption_cost": "Zero runtime cost (nothing installed); design cost of writing karta-specific probes in the same probe\u2192finding\u2192score\u2192policy shape, which the owner was going to write anyway \u2014 this just gives them a proven schema."
+    },
+    {
+     "name": "HealthBench rubric methodology (OpenAI)",
+     "url": "https://doi.org/10.48550/arxiv.2505.08775",
+     "what_it_is": "Rubric-based eval of open-ended LLM output: expert-written, example-specific criteria (48,562 total), each binary met/not-met with positive or negative point values; a model grader validated against experts; score = points earned / max possible; consensus criteria added where >50% of raters agree; grader quality reported as macro-F1 against human judgment.",
+     "maturity": "Published May 2025, widely cited through 2026 as the canonical rubric-decomposition design; dataset + grading code public (openai/simple-evals).",
+     "fit": "methodology-only",
+     "fit_detail": "The template for making karta's qualitative vectors repeatable: decompose 'execution flow gaps' and 'SME appropriateness' into many small binary criteria (each citing what evidence in the transcript/diff would satisfy it) instead of one 1-10 holistic judge score. Binary met/not-met per criterion + point weights (including negative points for violations, e.g. 'skipped an enforced halt' = -N) gives scores that survive judge nondeterminism far better than Likert, and per-criterion results diff cleanly version-over-version in committed files.",
+     "gaps_for_bench": "It is a paper/dataset, not a runner; criteria authoring is the expensive part (physicians wrote HealthBench's \u2014 the karta owner writes karta's); no longitudinal tooling, no cost/latency vectors.",
+     "adoption_cost": "Read-and-imitate; ~a day to rewrite the bench's qualitative vectors as binary criterion lists with weights, plus a small grader prompt per vector."
+    },
+    {
+     "name": "LLM-judge score-stability discipline (2025-26 practice cluster)",
+     "url": "https://tianpan.co/blog/2026-04-23-llm-judge-drift-evaluator-upgrade-phantom-regression",
+     "what_it_is": "A convergent body of 2025-2026 practice on keeping judge scores comparable over time (this drift post plus futureagi G-Eval guide, galtea.ai rubric templates, Venkat Peri 'Tune Your Rubric', ai-tldr pairwise-vs-rubric, geodocs grounded-answer rubric): pin judge model ID + temperature + rubric version and record them in every result file; deterministic checks run as a floor BEFORE the judge (fail fast, judge never sees them); one rubric dimension per judge call; anchored low-cardinality scales (binary or 3-band) with a concrete exemplar per level; require the judge to quote evidence; keep a small frozen calibration set re-scored every run so a judge upgrade shows up as ruler-change, not regression; treat judge-version changes as metric resets.",
+     "maturity": "Not a tool \u2014 independent 2025-2026 sources converging on the same rules; the underlying G-Eval paper and MT-Bench findings are well established.",
+     "fit": "methodology-only",
+     "fit_detail": "Directly answers the bench's hardest requirement \u2014 'scores comparable across bench runs months apart'. Prescribes exactly what karta's committed results files must record (judge model, rubric version, prompt hash, calibration-set scores alongside subject scores) and the deterministic-floor-then-judge ordering, which also matches the owner's determinism preference (enforced checks over skippable prose) and the existing benchmarks/sme honesty rule of only reporting A/B deltas.",
+     "gaps_for_bench": "Pure discipline, zero machinery; the calibration-set idea costs a handful of extra judge calls per run; nothing here measures tokens/wall-clock or runs arms.",
+     "adoption_cost": "Free \u2014 encode as a metadata block in the results-file schema plus ~10 lines in the runner; the frozen calibration set is the only artifact to author (once)."
+    },
+    {
+     "name": "Rubricon",
+     "url": "https://github.com/RitikPatill/rubricon",
+     "what_it_is": "Local eval harness for AI agents: YAML file defines scenarios + a shared rubric (weighted criteria, 1-5 anchored descriptors, pass thresholds); Claude judges each criterion against the agent's full trajectory (model calls, tool calls, results) and must cite specific spans; structured per-criterion scores; side-by-side run-comparison diff view; Python backend (uv) + Next.js dashboard; ANTHROPIC_API_KEY only, fully local.",
+     "maturity": "Very young: created 2026-06-02, last push 2026-06-10, 0 stars, single author, MIT. Effectively a well-built demo.",
+     "fit": "component",
+     "fit_detail": "The closest existing embodiment of what the qualitative half of the karta bench needs: rubric-as-first-class YAML, judge-must-cite-trajectory-evidence, per-criterion structured output, and a two-run regression diff (exactly the version-over-version vector). Worth lifting its YAML rubric schema and the cite-spans judge-prompt pattern verbatim even if none of its code runs.",
+     "gaps_for_bench": "Expects agents that emit its Python Trajectory type \u2014 karta runs are Claude Code sessions, so the owner would have to write a transcript\u2192Trajectory adapter; dashboard is a server, not committed files; 0-star single-author risk means treat it as source of patterns, not a dependency; no deterministic-check layer, no token/timing capture.",
+     "adoption_cost": "As a dependency: risky and needs an adapter (days). As a pattern source: an afternoon to copy the YAML schema and judge prompt into the hand-rolled runner."
+    },
+    {
+     "name": "harness-score",
+     "url": "https://github.com/paladini/harness-score",
+     "what_it_is": "npx CLI that scores the 'harness' around an AI coding agent \u2014 context files, rules, skills, hooks, sensors, guardrails, CI feedback \u2014 as an L0-L4 maturity level with a 108-point breakdown across six dimensions (Context & Guides, Skills & Commands, Hooks & Guardrails, Sensors & Feedback, CI Feedback, Hygiene & Safety). Every check is a filesystem fact (file exists/parses/matches pattern), zero LLM calls, zero network, byte-stable output; failed checks name the file and the fix; explicit level-gate thresholds (e.g. 'to reach L3: sensors \u2265 60%').",
+     "maturity": "Brand new: created 2026-07-11 (six days ago), v0.3.0, 3 stars, single author, MIT, TypeScript.",
+     "fit": "component",
+     "fit_detail": "Its subject matter is literally karta's artifact classes (skills, hooks, guardrails, context docs), and its design creed \u2014 deterministic filesystem-fact checks, same commit \u21d2 same score forever, CI-gateable \u2014 is exactly the owner's determinism preference. Could run as-is as one cheap static-structure vector over repos that consume karta, and its dimension taxonomy + level-gate mechanics are a ready-made template for a karta-specific deterministic scorecard.",
+     "gaps_for_bench": "Static structure only \u2014 it cannot see runtime behavior (execution-flow gaps, SME usage during a run, per-phase tokens/timing), which is most of the bench; checks are generic Claude-Code-harness checks, not karta-semantics-aware; 6-day-old 3-star project could vanish (but MIT + small codebase makes vendoring trivial).",
+     "adoption_cost": "Near zero to trial (npx harness-score, commit the JSON); low to vendor/fork if kept."
+    },
+    {
+     "name": "kodustech/agent-readiness",
+     "url": "https://github.com/kodustech/agent-readiness",
+     "what_it_is": "Open-source 'alternative to Factory.ai Agent Readiness': 39 automated checks across 7 pillars, 10+ languages, 5 maturity levels (Foundational\u2192Autonomous) with an 80%-of-criteria gate to advance a level; JSON output, --ci/--min-level gates, optional --ai analysis; npx one-command run.",
+     "maturity": "Best-backed of the readiness scorecards: 60 stars, 7 forks, company-backed (Kodus), created 2026-02, active pushes through 2026-06, MIT, TypeScript.",
+     "fit": "methodology-only",
+     "fit_detail": "Worth borrowing one mechanic: leveled maturity with a pass-percentage gate per level (must pass 80% of level-N criteria to be level N+1). That is a robust way to publish a single headline number per karta version that stays meaningful months apart \u2014 more stable than a weighted average, and it makes regressions legible ('dropped from Structured to Guided because determinism criteria X,Y now fail'). Also validates the radar-per-pillar + JSON + CI-gate reporting shape.",
+     "gaps_for_bench": "Its actual checks assess whether a codebase is ready FOR agents (docs, tests, linters) \u2014 the inverse of karta's question (is the agent framework itself sound); running it on the karta repo would measure the wrong thing; no judge layer, no runtime vectors.",
+     "adoption_cost": "Nothing to run; copy the level-gate scoring rule into the bench's aggregator (~30 lines)."
+    },
+    {
+     "name": "Checklist design theory + heuristic-evaluation severity (Degani & Wiener / WHO-Gawande / Nielsen)",
+     "url": "https://doi.org/10.1177/001872089303500209",
+     "what_it_is": "The human-factors canon behind repeatable audits: Degani & Wiener 1993 cockpit-checklist design (read-do vs challenge-verify execution styles, item-count limits, format effects); WHO Surgical Safety Checklist design (Int J Qual Health Care 2010: only 'killer items' \u2014 deadly if missed \u2014 placed at natural workflow pause points, 60-90s budget, PDSA iteration); Nielsen heuristic evaluation (3-5 independent evaluators, severity = frequency \u00d7 impact \u00d7 persistence, aggregate ratings to cut variance; MIT 6.831 lecture has the operational severity scale).",
+     "maturity": "Decades-old, heavily validated in aviation/medicine/HCI; not software, timeless.",
+     "fit": "methodology-only",
+     "fit_detail": "Design rules for the audit instrument itself so scores stay comparable: (1) audit vectors should be challenge-verify checklists of killer items anchored at karta's natural pause points (plan-commit, wave-merge, verify-verdict, delivery Stop-gate) rather than exhaustive inventories; (2) qualitative findings get a defined severity scale (frequency/impact/persistence) so 'dark area' findings from March and August rank on the same ruler; (3) Nielsen's result \u2014 single evaluators are unreliable, aggregates converge \u2014 justifies running the LLM auditor 3-5 times (or 2-3 judge models) per qualitative vector and aggregating, which is the cheapest known variance-reduction for rubric audits.",
+     "gaps_for_bench": "Pure theory; nothing executable; item-selection ('which are the killer items for karta') is still the owner's expert judgment.",
+     "adoption_cost": "A few hours of reading; shapes the rubric documents, adds a repeat-and-aggregate loop (k\u00d7) to judge cost."
+    },
+    {
+     "name": "Proofloop (formerly verdict)",
+     "url": "https://github.com/sattyamjjain/verdict",
+     "what_it_is": "Claude Code plugin that auto-grades every skill execution on 7 weighted dimensions (correctness, completeness, adherence, efficiency, safety, ...) into a composite /10 scorecard \u2014 using offline regex heuristics over the transcript, no LLM call, no network \u2014 fired automatically from Stop and SubagentStop hooks.",
+     "maturity": "Created 2026-02, 91 commits, CI + tagged releases, 2 stars, single author, MIT, Python.",
+     "fit": "component",
+     "fit_detail": "Proves out a mechanism karta is uniquely positioned to use: hook-triggered per-phase scorecard emission. A karta bench could attach a similar Stop/SubagentStop collector during bench runs to harvest per-phase evidence (tool-call counts, error strings, verdict types) into dated files \u2014 the plumbing pattern (plugin + hook + offline scorer + terminal/file scorecard) is directly reusable and matches karta's existing six-hook architecture and the verified agent_type/agent_id hook-payload identity.",
+     "gaps_for_bench": "Regex heuristics over transcripts are shallow \u2014 its 'correctness' score is a proxy, not an audit; dimensions are generic, not karta-semantic; grades executions live rather than benching versions; would double-fire alongside karta's own Stop-gate hooks if installed naively.",
+     "adoption_cost": "Low to study/lift the hook-collector pattern (small Python codebase); moderate and probably not worthwhile to adopt wholesale."
+    }
+   ],
+   "verdict": {
+    "call": "adopt-component",
+    "rationale": "No audit/scorecard tool is buyable as the bench chassis \u2014 everything in this space either scores the wrong subject (repo readiness FOR agents, not the agent framework itself) or is a 0-3-star weeks-old single-author project. But the methodology layer absolutely should not be hand-rolled from scratch: (1) structure deterministic vectors as OpenSSF-style probes (binary findings + def.yml-style cards + JSON evidence layer separate from the score layer, tiered/level-gated aggregation per kodustech); (2) structure qualitative vectors as HealthBench-style binary met/not-met criterion lists with weights and evidence citation, not Likert holism; (3) enforce the 2025-26 judge-stability discipline (pin judge+rubric versions in every committed results file, deterministic floor before judge, frozen calibration set re-scored each run, judge upgrade = metric reset) so months-apart scores are actually comparable; (4) lift Rubricon's YAML rubric schema + cite-trajectory-spans judge prompt + two-run diff view as the concrete file formats; (5) apply checklist theory (killer items at karta's natural pause points, Nielsen severity scale, 3-5 aggregated judge passes) when authoring the rubrics. harness-score is the one runnable adoption candidate \u2014 a free, deterministic, byte-stable static sub-vector over karta-consuming repos \u2014 worth npx-trialing and vendoring if it sticks. Net: hand-roll the thin runner (consistent with the existing benchmarks/sme precedent), but adopt these five components/patterns so the scoring layer is proven rather than invented."
+   },
+   "queries_run": [
+    "web_search_advanced_exa (startPublishedDate 2025-01-01): 'agent readiness assessment scorecard for AI coding agent repositories checklist rubric'",
+    "web_search_advanced_exa (startPublishedDate 2025-01-01): 'designing stable LLM-as-judge rubrics so scores are comparable across runs months apart; rubric drift, anchored scoring, HealthBench G-Eval methodology'",
+    "web_search_advanced_exa: 'OpenSSF Scorecard architecture probes checks structured results scoring methodology adapting scorecard pattern to other domains'",
+    "get_code_context_exa: 'CLI tool rubric-based scorecard audit of repository with YAML-defined checks, JSON results, score tracking over time, LLM judge rubric scoring framework GitHub'",
+    "web_search_advanced_exa: 'aviation medical checklist design theory applied to software pipelines heuristic evaluation severity ratings repeatable audits Gawande Degani Wiener'",
+    "crawling_exa: GitHub repo pages for paladini/harness-score, RitikPatill/rubricon, sattyamjjain/verdict (proofloop), harrydaihaolin/agent-readiness, kodustech/agent-readiness, weeargh/ares (maturity/stars/activity verification)"
+   ],
+   "key": "audit-scorecards"
+  },
+  {
+   "area": "stats-telemetry: honest small-n statistics for a periodic agent-framework bench (variance/pass@k treatment, minimum-n, paired A/B stats) plus local post-hoc cost/latency/token telemetry for Claude Code runs",
+   "candidates": [
+    {
+     "name": "bayes_evals (Bowyer/Aitchison/Ivanova, ICML 2025 spotlight)",
+     "url": "https://github.com/sambowyer/bayes_evals",
+     "what_it_is": "Single-file Python library implementing the ICML 2025 spotlight position paper 'Don't Use the CLT in LLM Evals With Fewer Than a Few Hundred Datapoints' (arXiv 2503.01747). Gives Bayesian credible intervals for per-arm scores and, critically, paired_comparisons(eval_data) which returns P(arm A > arm B) from a question-level paired score matrix \u2014 exact/Bayesian methods that stay honest at n=5-30 where CLT error bars are severely too narrow.",
+     "maturity": "25 stars, MIT, 1 maintainer, created 2025-02; but backed by an ICML 2025 spotlight paper and deliberately designed as a vendor-one-file library (wget bayes_evals.py). Small but methodologically authoritative.",
+     "fit": "component",
+     "fit_detail": "Directly covers the 'make small-n honest' need: karta's benchmarks/sme A/B arms (with-pack vs without-pack, or version X vs version Y on the same fixture tasks) produce exactly the pandas score-matrix input it wants. Replace the current raw diff-delta reporting with paired credible intervals + P(A>B), committed alongside the dated results files. Works for both binary pass/fail checks and rubric scores. Zero infra: vendor the single .py into benchmarks/, depend on pandas.",
+     "gaps_for_bench": "Stats layer only \u2014 no runner, no task format, no telemetry, no longitudinal tracking or judge. Input must be a per-question score matrix the bench builds itself. Not for continuous metrics like tokens/latency (score-matrix oriented).",
+     "adoption_cost": "Near zero: curl one file into the repo, pandas dependency, ~10 lines of glue in the results script. No maintenance expected \u2014 the file is stable and self-contained."
+    },
+    {
+     "name": "Adding Error Bars to Evals (Evan Miller / Anthropic, arXiv 2411.00640)",
+     "url": "https://arxiv.org/abs/2411.00640",
+     "what_it_is": "Anthropic's statistical doctrine paper for evals: report SEM; use clustered standard errors when questions come in related groups; reduce variance by resampling answers; ALWAYS analyze question-level paired differences when comparing two arms (a 'free' variance reduction since arms agree on which tasks are easy/hard, correlation 0.3-0.7 in practice); use power analysis to decide in advance whether an eval can detect the effect size you care about (minimum-n guidance).",
+     "maturity": "Published Nov 2024 by Anthropic; canonical \u2014 widely cited through 2026 (e.g. Cameron Wolfe's 2026-03 explainer with reference Python at cameronrwolfe.substack.com/p/stats-llm-evals includes paired_differences() code).",
+     "fit": "methodology-only",
+     "fit_detail": "The design doctrine for the whole bench: (a) same fixture tasks across arms/versions so every comparison is paired; (b) power analysis before adding a vector, so the bench README can honestly state which deltas it can and cannot detect at its n; (c) clustered SEs if fixture tasks are variants of a shared scenario (karta's likely case); (d) don't tune temperature for variance reduction. Formulas are ~20 lines of Python each if the owner prefers hand-rolling to bayes_evals.",
+     "gaps_for_bench": "Paper, not software. Its CLT-based intervals are exactly what the Bowyer ICML paper shows to be anti-conservative under a few hundred datapoints \u2014 so at karta's tiny n, take the DESIGN advice (pairing, power, clustering) from Miller but compute the actual intervals with bayes_evals' Bayesian/exact methods.",
+     "adoption_cost": "One read + baking rules into the bench's runner and report template. Zero ongoing cost."
+    },
+    {
+     "name": "Agentic-eval noise literature 2025-26 (On Randomness in Agentic Evals; ICC stochasticity; Measuring all the noises; Don't Pass@k)",
+     "url": "https://arxiv.org/abs/2602.07150",
+     "what_it_is": "A cluster of 2025-26 papers quantifying run-to-run noise specifically in AGENT evals: 'On Randomness in Agentic Evals' (arXiv 2602.07150; 60k SWE-Bench trajectories) shows single-run pass@1 varies 2.2-6.0 percentage points across identical runs with SD >1.5pp even at temperature 0 \u2014 trajectories diverge within the first few percent of tokens. 'Stochasticity in Agentic Evaluations' (OpenReview CzQ2UGInm5) proposes Intraclass Correlation (ICC) to separate task difficulty (between-task variance) from agent inconsistency (within-task variance). 'Measuring all the noises of LLM Evals' (arXiv 2512.21326) gives a practical all-pairs paired-SE rule of thumb. 'Don't Pass@k' (arXiv 2510.04265) replaces pass@k with a Dirichlet-posterior Bayes@N giving closed-form credible intervals for weighted RUBRIC scores at small N \u2014 directly applicable to the bench's LLM-judge rubric vectors, not just binary checks.",
+     "maturity": "Papers only; 2510.04265 and 2602.07150 are arXiv 2025-10/2026-02; ICC paper under review 2026. No production tooling beyond paper repos.",
+     "fit": "methodology-only",
+     "fit_detail": "Sets the honesty floor for karta's bench: any per-version delta under ~3pp (or its rubric-score analog) from single runs is noise, so the runner must do k>=3-5 repetitions per arm per task and commit mean + spread, never a single-run number. ICC is a cheap committed metric that tells the owner whether a regression signal is 'karta got worse' vs 'karta got flakier' \u2014 which maps directly onto the determinism vector (enforced checks vs skippable prose should RAISE ICC). Bayes@N is the right estimator for the rubric-scored qualitative vectors.",
+     "gaps_for_bench": "No code to adopt (beyond small paper repos); numbers are calibrated on SWE-Bench-scale tasks, so treat magnitudes as directional. Repetition budget (k runs x tasks x arms) multiplies token cost of every bench cycle \u2014 the real constraint for a single power user.",
+     "adoption_cost": "Reading + encoding constants into the bench config (k per arm, minimum reportable delta, ICC computation ~15 lines with pingouin/scipy). Zero maintenance."
+    },
+    {
+     "name": "Claude Code native OpenTelemetry export",
+     "url": "https://signoz.io/blog/claude-code-measure-degradation-opentelemetry/",
+     "what_it_is": "Claude Code ships built-in OTel metrics/logs (no wrapper needed): CLAUDE_CODE_ENABLE_TELEMETRY=1 + OTEL_METRICS_EXPORTER=otlp + endpoint env vars emit claude_code.token.usage (by type, model, and notably per agent and per skill), claude_code.cost.usage, session.count, active_time, lines_of_code, commit/PR counts, plus tool-decision events. Community stacks (rmpalgo/claude-monitoring, rockdarko/claude-code-metrics-prometheus, KubeRocketCI claude-code-telemetry, Grafana/VictoriaMetrics writeups through 2026-07) all wire it to a local collector.",
+     "maturity": "Official Anthropic feature, actively documented; large ecosystem of 2025-2026 local-stack recipes. The per-skill/per-agent dimensions confirmed in KubeRocketCI post (2026-07-12).",
+     "fit": "component",
+     "fit_detail": "Covers per-phase performance telemetry WITHOUT touching karta: the per-skill and per-agent metric dimensions attribute tokens/cost to karta-plan vs karta-build vs karta-verify directly \u2014 exactly the phase attribution the bench wants. A minimal local otel-collector with a file exporter (no Prometheus/Grafana needed) can dump per-run metrics to a JSON file the bench scores and commits.",
+     "gaps_for_bench": "Requires a collector process running DURING the bench run (env-var opt-in, so still zero karta changes, but not purely after-the-fact). Reported caveat (prokopov.me, 2026-03): telemetry flush is unreliable in `claude -p` one-shot mode \u2014 bench phases launched headless may lose final metrics. Metrics are aggregates; no per-work-item or wall-clock-per-phase breakdown beyond what dimensions carry. Community dashboards are monitoring-oriented, not diffable committed files \u2014 use only the raw OTLP-to-file path.",
+     "adoption_cost": "Moderate: ~30-line collector yaml + env vars in the bench launcher; collector binary is a single download. The full Grafana/Prometheus stacks are overkill for a periodic bench and add standing maintenance \u2014 avoid."
+    },
+    {
+     "name": "ccusage",
+     "url": "https://github.com/ryoppippi/ccusage",
+     "what_it_is": "Local CLI (16.8k stars, 128 releases, latest 2026-06, now Rust) that parses on-disk usage data from ~/.claude (and 15 other agent CLIs including pi-agent) into daily/weekly/monthly/session reports with per-model token breakdown and cost estimates; `--json` output for scripting; fully offline, purely after-the-fact.",
+     "maturity": "16,832 stars, 699 forks, 80 contributors, v20.0.14 released 2026-06-15, very active. By far the most mature tool in this category.",
+     "fit": "component",
+     "fit_detail": "The zero-effort token/cost accounting layer: bench runner records session IDs (or time window) per phase, then `npx ccusage session --json` after the run yields per-session tokens/cost the results script folds into committed per-phase numbers. Bonus: also covers the owner's pi-agent sessions with the same tool. Matches local-first, no-SaaS, results-as-files exactly.",
+     "gaps_for_bench": "Session-level granularity only \u2014 no per-work-item, no tool-call counts, no agent-spawn counts, no wall-clock-within-session; the bench must map sessions to karta phases itself (subagent sessions may complicate attribution). Cost is estimated from pricing tables, not billing truth. High release churn (Rust rewrite) though the CLI surface has stayed stable.",
+     "adoption_cost": "Trivial: npx, no config, no daemon. Pin a version in the bench script to dodge churn."
+    },
+    {
+     "name": "Direct JSONL session-transcript mining (~/.claude/projects) + claude-trace-replay as debug viewer",
+     "url": "https://github.com/harrylettering/claude-trace-replay",
+     "what_it_is": "Not one tool but the data source: Claude Code writes per-session JSONL under ~/.claude/projects/<project>/ containing every assistant message's usage block (input/output/cache tokens), every tool_use (including Task spawns with agent_type \u2014 i.e. subagent/wave counts), and timestamps. A ~150-line Python miner extracts per-phase tokens, tool-call counts, agent spawns, and wall-clock deltas with NO instrumentation and NO process running during the bench. Ecosystem survey: dozens of viewers exist but nearly all are 0-2 star throwaways (ccexplorer, cctime, claude-code-session-viewer, cc-lens forks); only claude-trace-replay (264 stars, MIT) has traction, and it is an interactive trace VIEWER for debugging runs, not a metrics extractor.",
+     "maturity": "Data source: official-but-undocumented Claude Code internal format, stable in practice but schema can shift across CC versions. claude-trace-replay: 264 stars, MIT, active. Everything else surveyed: unknown/abandoned-grade.",
+     "fit": "component",
+     "fit_detail": "The only surveyed path that yields ALL the per-phase quantities the bench wants (tokens AND tool calls AND agent spawns AND wall-clock, attributable to specific karta work items via cwd/worktree paths in the transcript) purely after the run, results committable as JSON. This is the richest telemetry option and it composes with karta's existing status tooling (which already reads git; this reads transcripts). Keep claude-trace-replay as the human debugging surface when a bench run looks anomalous.",
+     "gaps_for_bench": "The miner itself is a small hand-roll \u2014 no maintained library encapsulates 'transcript -> metrics table' (ccusage does tokens only; the viewers do UI only). Undocumented schema means occasional breakage on Claude Code upgrades; mitigated by ccusage's parser (open source, actively tracks schema changes) serving as a reference implementation to crib from.",
+     "adoption_cost": "One-time ~150-line Python script plus an expectation of small fixes after major Claude Code releases. No daemons, no deps beyond stdlib/pandas."
+    },
+    {
+     "name": "evalstats (ianarawjo / statsforevals.com)",
+     "url": "https://github.com/ianarawjo/evalstats",
+     "what_it_is": "Python package + guide by the ChainForge author for 'statistically sane' comparison of prompt and model performance: bootstrapped CIs, prompt-vs-model sensitivity analysis, guided test selection, print_analysis_summary() terminal reports. Explicitly targets 'is Prompt A actually better than Prompt B or just luckier' \u2014 the prompt-variant framing matches comparing SME-pack/skill variants.",
+     "maturity": "104 stars, created 2026-03, last push 2026-05, single maintainer, self-described 'actively building out'. Early.",
+     "fit": "component",
+     "fit_detail": "Could replace hand-written bootstrap code for the A/B vectors and adds prompt-sensitivity discipline (relevant since karta arms differ by markdown prose, i.e. prompts). Its guided 'which test in situation X' angle suits a one-person operation without a statistician.",
+     "gaps_for_bench": "Young and churning; unclear license (NOASSERTION); overlaps almost entirely with bayes_evals + 20 lines of Miller formulas, which are lower-risk. No telemetry, no runner, no longitudinal layer. Watch rather than depend on until the API settles.",
+     "adoption_cost": "pip install and API risk on every bench cycle while pre-1.0; migrating off later would touch only the stats step."
+    }
+   ],
+   "verdict": {
+    "call": "adopt-component",
+    "rationale": "Nothing in this category is (or should be) the bench chassis \u2014 these are the stats brain and the telemetry senses. Concrete composition: (1) vendor bayes_evals' single file for paired small-n intervals and P(A>B) on both A/B arms and version-over-version comparisons, with Miller's paper supplying the design doctrine (identical paired fixture tasks everywhere, power analysis to state up front which deltas the bench can detect, clustered SEs if fixtures share scenarios) and the 2025-26 agentic-noise literature fixing the constants (k>=3-5 runs per arm, single-run deltas under ~3pp treated as noise, ICC committed per cycle as the determinism-vector metric, Bayes@N for rubric-judge scores); (2) for per-phase performance, mine ~/.claude/projects JSONL transcripts post-hoc (tokens, tool calls, agent spawns, wall-clock \u2014 attributable to karta phases via worktree paths, zero instrumentation, results as committed JSON) with ccusage as the zero-cost token/cost cross-check and its parser as the schema reference; (3) treat Claude Code's native OTel as the fallback if transcript schema churn ever makes mining too costly \u2014 it gives per-skill/per-agent token dimensions officially, at the price of a collector running during bench runs and a known flush caveat in -p mode. Watch evalstats until its API and license settle. The only genuine hand-roll left in this category is the ~150-line transcript miner, which no maintained tool currently provides."
+   },
+   "queries_run": [
+    "web_search_advanced_exa (2025+): paper on statistical variance and error bars in LLM agent evaluations, pass@k treatment of eval noise, how many runs needed",
+    "web_search_advanced_exa (2025+): Claude Code OpenTelemetry metrics token usage cost telemetry local monitoring setup",
+    "get_code_context_exa: ccusage CLI parse Claude Code JSONL transcripts token usage cost per session daily report",
+    "web_search_advanced_exa (2025+): tool to analyze Claude Code session transcripts JSONL locally, mining tool calls, agent spawns, per-session statistics dashboard",
+    "get_code_context_exa: bayes_evals python library Bowyer Aitchison LLM evaluation error bars small sample Bayesian frequentist intervals GitHub",
+    "web_search_exa: Anthropic Adding Error Bars to Evals Evan Miller statistical approach paired differences clustered standard errors recommendations",
+    "crawling_exa: github.com/ianarawjo/evalstats + github.com/ryoppippi/ccusage + github.com/sambowyer/bayes_evals (maturity verification)"
+   ],
+   "key": "stats-telemetry"
+  }
+ ]
+}

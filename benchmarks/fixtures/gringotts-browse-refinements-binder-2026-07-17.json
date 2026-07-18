@@ -1,0 +1,271 @@
+{
+  "slug": "browse-refinements",
+  "title": "Refine the delivered browse surface: renderable detail hero, tag counts, multi-tag filtering, wide-screen layout",
+  "summary": "Four refinements to the shipped browse surface. The detail page's hero switches from streaming the raw original (which breaks on iPhone HEIC in desktop browsers) to a new mid-size JPEG derivative served on its own media route. The tag chip rail gains a muted global photo count on every chip. The home filter grows AND-semantics multi-tag support (?tag=a&tag=b) with add/remove chip interaction and a tag-set-carrying load-more cursor. The whole surface finally uses wide screens: a centered content column, a wrapping chip rail, and an auto-fill grid, all in CSS alone.",
+  "motivation": "Opening an iPhone photo today renders a broken hero image and drags full original bytes through the tunnel; the fix also cuts detail-page weight. Counts on chips answer \"how much is under this tag\" without a click. Multi-tag AND filtering makes the catalog findable once tags overlap. And the delivered phone-width layout wastes every desktop viewport — a pure-CSS column, wrap, and auto-fill grid fixes that without touching templates.",
+  "scope": {
+    "included": [
+      "internal/thumb + internal/web/media.go — a size-parameterized 1280px JPEG preview derivative through the existing vips shell-out seam, served on a new Access-wrapped /media/previews/{id} route; ThumbPurger purge extended to remove all cached size variants",
+      "internal/store + internal/web chip rail — a global per-tag count query (GROUP BY over photo_tags) replacing ListTags for the rail, rendered as a muted count span on every tag chip plus a count-free All chip",
+      "internal/store + internal/web home route — ListPhotos/CountPhotos take a []string tag set with AND semantics (dynamic ? placeholder list only, INV-004; every element through the single normalizeTag path, INV-005); chip hrefs add/remove tags from the active set; load-more URL carries the full set",
+      "internal/web/assets/app.css + css_test.go — responsive wide-screen rules only: centered ~1080px browse column, wrapping chip rail, repeat(auto-fill, minmax(168px, 1fr)) grid, ~720px detail column with capped hero, snapbar aligned to the column"
+    ],
+    "excluded": [
+      "Any change to GET /media/originals/{id} or the stored original bytes — the originals route and the Open-original link stay byte-for-byte unchanged (INV-002)",
+      "Any change to the upload/capture flow, EXIF handling, or the delete route's semantics (only its purge coverage extends)",
+      "OR-semantics or any filter combinator beyond AND; per-filter-conditioned chip counts (counts are always global)",
+      "Tag garbage collection or any tag-model reshaping — orphaned tags stay and render with count 0",
+      "New design tokens, new env vars, new dependencies, or any Go/templ structural change for the wide-screen item (pure CSS is the contract)",
+      "Any change to internal/store/schema.sql or migrations"
+    ]
+  },
+  "design_facts": {
+    "source": "https://claude.ai/design/p/48eada1e-cbaf-40d2-8b93-308d71b2f564 — delivered hybrid vocabulary extended; comps for this slice shared in-session 2026-07-17",
+    "stack": "Go 1.26 + templ/HTMX + modernc SQLite; one static CGO-free binary"
+  },
+  "sme": [
+    "minimalism",
+    "go-htmx",
+    "go-naming"
+  ],
+  "env_contract": {
+    "command": "go run ./cmd/gringotts",
+    "supports_isolation": true,
+    "isolation_params": [
+      "GRINGOTTS_DB_PATH",
+      "GRINGOTTS_MEDIA_ROOT",
+      "GRINGOTTS_LISTEN_ADDR",
+      "GRINGOTTS_THUMB_CACHE_DIR",
+      "GRINGOTTS_ACCESS_DISABLED"
+    ]
+  },
+  "runtime_contract": {
+    "runtimes": [
+      {
+        "name": "go",
+        "version": "1.26.5",
+        "manager": "mise"
+      }
+    ],
+    "on_unavailable": "halt"
+  },
+  "token_manifest": {
+    "notes": "No new tokens. The delivered hybrid vocabulary in internal/web/assets/app.css is reused as-is; the wide-screen item adds only layout rules (media queries), never color/type tokens."
+  },
+  "shared_terms": [
+    {
+      "id": "all-chip-label",
+      "canonical": ">All</a>",
+      "items": [
+        "tag-chip-counts",
+        "multi-tag-filter"
+      ]
+    },
+    {
+      "id": "chip-dismiss-glyph",
+      "canonical": "<span class=\"chip-x\" aria-hidden=\"true\">&#215;</span>",
+      "items": [
+        "tag-chip-counts",
+        "multi-tag-filter"
+      ]
+    },
+    {
+      "id": "chip-count-span",
+      "canonical": "<span class=\"chip-count\" aria-hidden=\"true\">",
+      "items": [
+        "tag-chip-counts",
+        "multi-tag-filter"
+      ]
+    }
+  ],
+  "work_items": [
+    {
+      "id": "detail-hero-derivative",
+      "title": "Serve a 1280px JPEG preview derivative and point the detail hero at it",
+      "summary": "Adds a size-parameterized variant of the existing vips thumbnail path (longest edge 1280, same cache dir with a size-suffixed key, same singleflight/bounded/placeholder behavior), exposes it on GET /media/previews/{id} inside the Access-wrapped mux, switches the detail hero <img> to it, and extends Purge plus the WI29-era tests to remove ALL cached size variants on delete. The originals route and Open-original link stay byte-for-byte unchanged.",
+      "estimate": "L",
+      "depends_on": [],
+      "design_reference": "/photos/{id} — detail hero image (comps shared in-session 2026-07-17)",
+      "contract": {
+        "generation": "internal/thumb gains an exported GeneratePreview(ctx, id, ext string) ([]byte, bool, error) on *Generator: the SAME vips `thumbnail` subprocess pipeline as Generate (same Runner seam, same temp-file flow, same vipsTimeout, same 0o700 cache dir, same atomic rename write) with the size argument \"1280\" instead of \"512\" — the size is the ONLY pipeline difference. Return triple semantics are identical to Generate: (bytes, false, nil) real from vips or disk cache; (placeholder, true, nil) embedded placeholder on vips absence/failure; (nil, false, err wrapping fs.ErrNotExist) for an unknown storage key. The preview's singleflight key incorporates the size (e.g. \"1280|\"+id) so a 512 and a 1280 generation for the same id never dedupe into each other. *thumb.Bounded implements GeneratePreview by acquiring the SAME semaphore as Generate, then delegating verbatim — one shared vips concurrency bound.",
+        "caching": "Same disk cache directory (GRINGOTTS_THUMB_CACHE_DIR — no new env var, min.3). The preview cache key incorporates the size: fmt.Sprintf(\"%x-1280.jpg\", sha256(id)); the existing 512 key (\"%x.jpg\") stays byte-identical so already-cached thumbnails survive untouched and the two variants coexist on disk. The HTTP response reuses the existing cacheControl const (\"public, max-age=31536000, immutable\") and Content-Type image/jpeg.",
+        "purge": "(*Generator).Purge(id) removes ALL cached size variants for the id: the 512 path AND the 1280 path, as two deterministic filepath.Join + os.Remove calls — still no globbing, walking, or ReadDir. Per file, fs.ErrNotExist collapses to nil; any other removal error surfaces unmodified. purge.go's single-file doc comment is rewritten to the multi-variant contract. internal/thumb/purge_test.go (WI29-era) extends to seed BOTH variants and assert both are removed while another id's variants survive, and internal/web/delete_test.go's cache assertions extend so DELETE /photos/{id} provably clears both variants.",
+        "routing": "The web.ThumbGenerator seam gains GeneratePreview (same signature shape); *thumb.Generator and *thumb.Bounded both satisfy it, so composition-root wiring in cmd/gringotts is unchanged. MediaHandler gains handlePreview serving GET /media/previews/{id} — the route name follows the existing plural /media/ pattern — registered inside NewServer on the same single mux, so the composition root's whole-mux Access wrap gates it (INV-009) and the specific pattern wins over GET / under Go 1.22 precedence. Status mapping mirrors handleThumbnail exactly: store.GetPhoto resolves FIRST (unknown id → 404 via WriteHeader, before any generation runs), any generate error → 404 with no Content-Type, success → 200. The test-only RegisterMedia shim mounts the new route alongside the existing two.",
+        "template": "internal/web/detail.templ's hero <img> src switches from templ.SafeURL(\"/media/originals/\" + v.ID) to templ.SafeURL(\"/media/previews/\" + v.ID). The Open-original <a class=\"openlink\"> href stays \"/media/originals/\" + v.ID byte-identical, and handleOriginal in media.go is untouched. detail_templ.go is regenerated and committed. No new CSS class or token.",
+        "invariants": "INV-002: the originals route, the stored bytes, and the save path are untouched; all pixel decode stays in internal/thumb. INV-003: vips only ever via exec subprocess — no cgo, no linked libraries; CGO_ENABLED=0 build holds. INV-009: the new route rides the existing Access-wrapped mux; no second mux, no bypass. No new config knob, env var, or dependency (min.1/min.3)."
+      },
+      "touches": [
+        "internal/thumb/thumb.go",
+        "internal/thumb/thumb_test.go",
+        "internal/thumb/bounded.go",
+        "internal/thumb/bounded_test.go",
+        "internal/thumb/purge.go",
+        "internal/thumb/purge_test.go",
+        "internal/web/media.go",
+        "internal/web/media_test.go",
+        "internal/web/media_export_test.go",
+        "internal/web/upload.go",
+        "internal/web/server_media_routes_test.go",
+        "internal/web/detail.templ",
+        "internal/web/detail_templ.go",
+        "internal/web/detail_test.go",
+        "internal/web/delete_test.go"
+      ],
+      "surface": {
+        "flagged": true,
+        "signals": [
+          "route-addition",
+          "destructive-path-touch"
+        ]
+      },
+      "oracle": {
+        "type": "integration",
+        "command": "go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate && go vet ./... && go test ./... && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/gringotts",
+        "assertions": [
+          "GET /media/previews/{id} for a seeded photo (stub Runner) returns 200 with Content-Type image/jpeg and Cache-Control \"public, max-age=31536000, immutable\", and the runner received vips `thumbnail` args carrying \"1280\" as the size argument — the 512 route's args are unchanged.",
+          "An unknown id returns 404 with no Content-Type and the runner is never invoked (DB-first fail-closed ordering); a failing/absent vips serves the embedded placeholder at 200, never an error status.",
+          "Cache variants coexist: after generating both the thumbnail and the preview for one id, the cache dir holds two distinct files — sha256hex + \".jpg\" and the size-suffixed \"-1280.jpg\" — and a repeat preview request is served from disk without re-invoking the runner; concurrent same-id preview requests dedupe via singleflight without colliding with a concurrent 512 generation.",
+          "Purge(id) removes BOTH cached size variants for the id and leaves another id's variants intact; purging with neither variant present returns nil; a non-ENOENT removal error surfaces; the extended internal/web delete-flow test proves DELETE /photos/{id} clears both variants from the cache dir.",
+          "GET /photos/{id} renders the hero <img> with src=\"/media/previews/{id}\" while the Open-original link href stays \"/media/originals/{id}\", and GET /media/originals/{id} still streams the stored bytes byte-identical with the stored original_format Content-Type — INV-002 untouched by diff and by test.",
+          "GET /media/previews/{id} is registered inside NewServer's single mux (server_media_routes_test.go extended), so the composition root's whole-mux Access middleware gates it exactly like the existing media routes (INV-009).",
+          "The full CI gate passes: templ generate leaves no diff, go vet ./... and go test ./... are clean, and CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/gringotts succeeds."
+        ]
+      }
+    },
+    {
+      "id": "tag-chip-counts",
+      "title": "Show each tag's global photo count on its rail chip",
+      "summary": "Replaces ListTags with a name-plus-global-count query (GROUP BY over photo_tags, ORDER BY name ASC), renders the count as a muted aria-hidden span after each chip name, and introduces the count-free All chip at the head of the rail. Chip href semantics stay single-tag in this item; counts are never conditioned on the active filter.",
+      "estimate": "M",
+      "depends_on": [],
+      "design_reference": "/ — tag chip rail with count badges (comps shared in-session 2026-07-17)",
+      "contract": {
+        "store": "internal/store/list.go replaces ListTags with ListTagCounts(ctx, db) ([]TagCount, error), TagCount being struct{ Name string; Count int }. One query, no combinatorics: SELECT t.name, COUNT(pt.photo_id) FROM tags t LEFT JOIN photo_tags pt ON pt.tag_id = t.id GROUP BY t.id, t.name ORDER BY t.name ASC — LEFT JOIN so an orphaned tag (tolerated in this catalog) renders with count 0. Counts are GLOBAL, never conditioned on the active filter. Non-nil empty slice when no tags, never an error; the query takes no user input, and any future bind stays a ? placeholder (INV-004). ListTags is deleted — handleCapturePage is its only caller — and its list_test.go coverage migrates to ListTagCounts (deletion over addition, minimalism). The stale doc-comment mentions of ListTags (internal/store/count.go, internal/web/capture.go, and the chiprail doc comment) are updated in the same sweep.",
+        "view_model": "internal/web/capture.go: browseData.Tags becomes []tagChip, tagChip being struct{ Name string; Count string } assembled in handleCapturePage — Count is the PRE-FORMATTED display string (strconv.Itoa of the global count), so templ receives display-ready strings and all formatting lives in Go (go-htmx htmx.8). No other browseData field changes; Active stays the single normalized tag string in this item.",
+        "template": "chiprail's signature becomes chiprail(chips []tagChip, active string); capture.templ's call site updates and both *_templ.go files are regenerated and committed. Rail markup, stated precisely: len(chips)==0 renders NOTHING (unchanged empty state). Otherwise <nav class=\"chiprail\" aria-label=\"Filter photos by tag\"> opens with the All chip — <a class=\"chip chip-on\" href=\"/\">All</a> when active==\"\", else <a class=\"chip\" href=\"/\">All</a> — which NEVER carries a count (the header count already shows totals). Each tag chip then renders its name followed immediately by <span class=\"chip-count\" aria-hidden=\"true\">{Count}</span> (aria-hidden so the count never joins the link's accessible text): inactive — <a class=\"chip\" href={tagHref(name)}>{name}<span class=\"chip-count\">…</span></a> with tagHref unchanged; active — <a class=\"chip chip-on\" href=\"/\" aria-label=\"Clear tag filter\">{name}<span class=\"chip-count\">…</span><span class=\"chip-x\" aria-hidden=\"true\">&#215;</span></a>. Href semantics are UNCHANGED in this item (single-tag add on inactive via /?tag=name, clear-to-/ on active) — multi-tag hrefs are the next item's scope. Every rail element stays an <a>, never a <button>, preserving the single-button page and the WI14 busy hook.",
+        "styling": "internal/web/assets/app.css gains exactly one new rule, .chip-count — muted register via the EXISTING var(--muted) and a smaller font-size; no new custom property, color, or type token (token_manifest). The rule lands BEFORE the final form.htmx-request .snapbtn busy hook, which remains the last rule in the file and keeps owning the last .snapbtn occurrence. css_test.go extends with a .chip-count presence assertion; the position guard keeps passing.",
+        "invariants": "Counts are global — one aggregate query per page render, never filter-conditioned. INV-004 (parameterized SQL), INV-005 untouched (no new normalization site; the rail still labels chips only from stored names — the raw ?tag= query is never echoed). No new dependency, no new config."
+      },
+      "touches": [
+        "internal/store/list.go",
+        "internal/store/count.go",
+        "internal/store/list_test.go",
+        "internal/web/capture.go",
+        "internal/web/capture.templ",
+        "internal/web/capture_templ.go",
+        "internal/web/chiprail.templ",
+        "internal/web/chiprail_templ.go",
+        "internal/web/capture_test.go",
+        "internal/web/assets/app.css",
+        "internal/web/css_test.go"
+      ],
+      "shared_resources": [
+        "internal/web/assets/app.css",
+        "internal/web/css_test.go"
+      ],
+      "surface": {
+        "flagged": false,
+        "signals": []
+      },
+      "oracle": {
+        "type": "integration",
+        "command": "go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate && go vet ./... && go test ./... && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/gringotts",
+        "assertions": [
+          "Store: over a seeded catalog (one tag linked to two photos, one to one photo, one orphaned tag linked to none) ListTagCounts returns rows in name-ascending order with counts 2, 1, and 0 — the orphaned tag present with count 0 — and no ListTags identifier remains in any .go or .templ source (archived docs under docs/exec-plans/completed/ keep their history).",
+          "GET / renders each tag chip as its stored name followed immediately by <span class=\"chip-count\" aria-hidden=\"true\">N</span> inside the <a class=\"chip\">, N being the tag's GLOBAL count; the rail opens with the All chip (<a class=\"chip chip-on\" href=\"/\">All</a> when unfiltered) and the All chip carries no chip-count span.",
+          "GET /?tag=x keeps single-tag behavior byte-for-byte in structure: x's chip renders class \"chip chip-on\" with href=\"/\" and the trailing &#215; chip-x span, its chip-count span still present between name and dismiss glyph; the All chip renders without chip-on; every chip's count equals its unfiltered value (counts never conditioned on the active filter).",
+          "A tagless catalog renders no <nav class=\"chiprail\"> at all (unchanged empty state), and the rendered page still contains exactly one <button> (the capture submit).",
+          "Served /assets/app.css contains a .chip-count rule using var(--muted) and introducing no new custom property; form.htmx-request .snapbtn remains the FINAL rule and owns the last .snapbtn occurrence in the file — css_test.go's position guard and the new presence assertion pass.",
+          "The full CI gate passes: templ generate leaves no diff, go vet ./... and go test ./... are clean, and CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/gringotts succeeds."
+        ]
+      }
+    },
+    {
+      "id": "multi-tag-filter",
+      "title": "Filter the catalog by multiple tags with AND semantics",
+      "summary": "GET /?tag=a&tag=b shows photos carrying ALL given tags. ListPhotos and CountPhotos take a []string tag set (every element through the single normalizeTag path; dynamic ? placeholder lists only; GROUP BY / HAVING equality for AND). Inactive chips add their tag to the set, active chips remove theirs, the All chip clears, the header reads K of N, and the load-more cursor carries the full set. Single-tag URLs behave identically to today.",
+      "estimate": "L",
+      "depends_on": [
+        "tag-chip-counts"
+      ],
+      "design_reference": "/?tag=a&tag=b — chip rail add/remove interaction, K-of-N header, intersection grid (comps shared in-session 2026-07-17)",
+      "contract": {
+        "store": "ListPhotos(ctx, db, tags []string, before string) and CountPhotos(ctx, db, tags []string) replace the single-tag signatures; handleCapturePage and handlePhotosFragment are the only callers and update in this item. Inside the store, every element passes through normalizeTag — the single normalization path, INV-005 — elements normalizing to \"\" are dropped, and the normalized set is DEDUPLICATED preserving first-appearance order (a duplicate would break the HAVING equality). An empty resulting set means NO filter — exactly today's tag==\"\" branch. The filtered shape: JOIN photo_tags pt / tags t, WHERE t.name IN (?, …) with the placeholder list built ONLY as a dynamically repeated \"?\" string — values always bound, never interpolated (INV-004) — GROUP BY p.id HAVING COUNT(DISTINCT t.name) = ? bound to len(set), giving AND semantics. Unknown (never-stored) normalized tags STAY in the set — fail-closed: the HAVING equality can then never hold, so the result is an empty page / count 0, never an error and never a silent widening to fewer tags. Keyset contract unchanged: before==\"\" is first-page, non-empty is an opaque `id < ?` bound, PageSize cap, non-nil empty slices.",
+        "routing": "handleCapturePage and handlePhotosFragment read the FULL multi-value query — r.URL.Query()[\"tag\"] — and forward the raw slice verbatim to the store (the handlers never trim or lowercase; active-chip matching uses store.NormalizeTag per element, the same exported helper as today). GET /?tag=a behaves identically to the pre-change single-tag page and GET / identically to the unfiltered page (backward compatible). Duplicate, unknown, and whitespace-only tag values return 200, never 500.",
+        "view_model": "browseData.Active becomes the normalized, deduplicated active set ([]string, first-appearance order); IsFiltered means len(Active) > 0. Filtered (K) is CountPhotos over the WHOLE active set — the intersection count — and the header keeps the existing pre-formatted strings: fmt.Sprintf(\"%d of %d\", K, N) when filtered, fmt.Sprintf(\"%d photos\", N) otherwise (htmx.8: formatting stays in Go).",
+        "template": "chiprail(chips []tagChip, active []string): the All chip keeps href=\"/\" and is chip-on iff len(active)==0. An INACTIVE chip's href ADDS its tag — url.Values with q[\"tag\"] = active set plus the chip's name → \"/?\"+q.Encode(), multi-value tag params, always escaped, never concatenated. An ACTIVE chip renders chip-on with the &#215; chip-x dismiss span (shared term chip-dismiss-glyph) and its href REMOVES that tag, keeping the rest in set order — the remaining set's multi-value URL, or \"/\" when it was the last active tag. The chip-count span from tag-chip-counts renders identically on every chip (shared terms chip-count-span, all-chip-label). Both *_templ.go files regenerated and committed.",
+        "pagination": "LoadMoreURL (full first page) and handlePhotosFragment's self-perpetuating trigger URL carry the FULL tag set — one tag param per element via url.Values — plus before=<oldest id>; the fragment handler round-trips the same set so every subsequent page filters identically.",
+        "invariants": "INV-004: only the ? placeholder list is ever built dynamically — never a value. INV-005: every element of every filter path (list and count) passes through the store's single normalizeTag. INV-009: no new route — semantics change rides the existing Access-wrapped GET / and GET /photos. No change to detail, upload, delete, or media routes, and no schema/migration change."
+      },
+      "touches": [
+        "internal/store/list.go",
+        "internal/store/count.go",
+        "internal/store/list_test.go",
+        "internal/store/count_test.go",
+        "internal/web/capture.go",
+        "internal/web/capture.templ",
+        "internal/web/capture_templ.go",
+        "internal/web/chiprail.templ",
+        "internal/web/chiprail_templ.go",
+        "internal/web/photos.go",
+        "internal/web/capture_test.go",
+        "internal/web/photos_test.go"
+      ],
+      "surface": {
+        "flagged": true,
+        "signals": [
+          "route-semantics-change"
+        ]
+      },
+      "oracle": {
+        "type": "integration",
+        "command": "go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate && go vet ./... && go test ./... && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/gringotts",
+        "assertions": [
+          "Store AND semantics: with photos A{a,b}, B{a}, C{b}, ListPhotos with tags {\"a\",\"b\"} returns only A and CountPhotos returns 1; a single-element set {\"a\"} returns exactly the pre-change single-tag results; an empty (or all-whitespace) set returns the unfiltered page and total.",
+          "INV-005 and INV-004 on every filter path: raw elements like \" A \" match the stored \"a\" through the store's single normalizeTag in BOTH ListPhotos and CountPhotos; duplicates (\"a\",\"a\") dedupe so the HAVING equality still matches; the IN clause binds every value through ? placeholders with only the placeholder list built dynamically (asserted against the query text / by a mixed-case-with-quote tag value that would break interpolation).",
+          "GET /?tag=a&tag=b returns 200 with the header reading \"K of N\" where K is the intersection count, the grid holding only intersection cells; GET /?tag=a renders identically to the pre-change single-tag page; GET /?tag=a&tag=a collapses to the single-tag result and GET /?tag=zzz (unknown) renders an empty grid with \"0 of N\" — never a 500.",
+          "Rail interaction with active {a}: inactive chip b's href is the escaped multi-value URL carrying tag=a AND tag=b; active chip a renders chip-on with the &#215; dismiss span and href \"/\" (last active tag) — with active {a,b}, a's href carries only tag=b; the All chip href is \"/\" and is chip-on only when no tag is active; every chip keeps its chip-count span byte-identical to the counts item's markup.",
+          "Load-more carries the set: a full first page under active {a,b} renders a trigger URL containing before=<oldest id> plus BOTH tag params; GET /photos with that URL returns the next intersection-only page and, when full, re-emits a trigger preserving the full tag set.",
+          "The full CI gate passes: templ generate leaves no diff, go vet ./... and go test ./... are clean, and CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/gringotts succeeds."
+        ]
+      }
+    },
+    {
+      "id": "wide-screen-layout",
+      "title": "Use wide viewports: centered column, wrapping rail, auto-fill grid — CSS only",
+      "summary": "Adds responsive rules to app.css so the browse surface centers in a ~1080px column with a wrapping chip rail and an auto-fill photo grid, and the detail page centers at ~720px with a height-capped hero — zero Go/templ change. New rules land before the busy hook, which stays the final rule; css_test.go's served-CSS assertions extend to cover the new rules.",
+      "estimate": "S",
+      "depends_on": [],
+      "design_reference": "/ and /photos/{id} at wide viewports — centered-column comps shared in-session 2026-07-17",
+      "contract": {
+        "styling": "All changes land in internal/web/assets/app.css as layout rules inside min-width media queries; every rule targets an EXISTING class — no selector renames, no new color/type token (token_manifest), and zero Go/templ structural change is the contract (if implementation proves a templ change unavoidable, the item fails its contract and returns to planning; none is anticipated). The rules: (1) a wide-viewport media query widens the browse column — main/.capture max-width to ~1080px (the base 480px rule is untouched); (2) .chiprail switches to flex-wrap: wrap with horizontal scrolling disabled at wide widths, so chips flow onto multiple rows; (3) .grid switches to grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); (4) .detail constrains to a centered ~720px column and the .detail-photo img gains a max-height cap (~70vh with object-fit: contain) so the 1280px hero never towers; (5) .snapbar's content aligns to the same centered column (it already nests inside main.capture, so the rule keeps its sticky bar visually on-column at the new width). Below the breakpoints the emitted base CSS is byte-unchanged — mobile rendering is untouched.",
+        "ordering": "Every new rule lands BEFORE the form.htmx-request .snapbtn busy hook, which remains the FINAL rule in the file and keeps owning the last .snapbtn occurrence — css_test.go's existing position guard must keep passing unmodified in meaning.",
+        "tests": "internal/web/css_test.go extends its served-CSS string assertions (the existing fetch-and-strip style): presence of the wide-viewport media query with the ~1080px browse column, the .chiprail wrap rule, the literal repeat(auto-fill, minmax(168px, 1fr)), the ~720px detail column, and the hero max-height cap — plus a re-assertion that the busy hook is still last.",
+        "invariants": "Pure CSS: the diff touches only app.css and css_test.go; rendered HTML for GET / and GET /photos/{id} is byte-identical to before the item. No new custom property, no new class beyond what layout requires (target existing classes; introduce none), no new dependency."
+      },
+      "touches": [
+        "internal/web/assets/app.css",
+        "internal/web/css_test.go"
+      ],
+      "shared_resources": [
+        "internal/web/assets/app.css",
+        "internal/web/css_test.go"
+      ],
+      "surface": {
+        "flagged": false,
+        "signals": []
+      },
+      "oracle": {
+        "type": "integration",
+        "command": "go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate && go vet ./... && go test ./... && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/gringotts",
+        "assertions": [
+          "Served /assets/app.css contains min-width media-query rules for: the ~1080px centered browse column on the existing main/.capture selectors, .chiprail flex-wrap: wrap, .grid repeat(auto-fill, minmax(168px, 1fr)), the ~720px centered .detail column, and a .detail-photo img max-height cap — each asserted as a literal in css_test.go's stripped-CSS style.",
+          "All new rules sit inside media queries and no base (narrow-viewport) rule's declarations change — the phone-width output path is byte-unchanged outside the new query blocks.",
+          "form.htmx-request .snapbtn remains the FINAL rule in the file and owns the last .snapbtn occurrence — the existing position guard passes with every new rule landing before it.",
+          "The item's diff touches only internal/web/assets/app.css and internal/web/css_test.go: templ generate leaves no diff and the rendered HTML of GET / and GET /photos/{id} is byte-identical to the pre-change output.",
+          "The full CI gate passes: templ generate leaves no diff, go vet ./... and go test ./... are clean, and CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./cmd/gringotts succeeds."
+        ]
+      }
+    }
+  ]
+}
