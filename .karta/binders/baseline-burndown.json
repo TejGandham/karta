@@ -1,0 +1,255 @@
+{
+  "slug": "baseline-burndown",
+  "title": "Burn down the fix-worthy findings from the 2026-07-21 mechanical bench baseline",
+  "summary": "The first fully mechanical bench run flagged real, re-checkable defects: an unescaped status page, an undelimited context injection, docs that miscount karta's own skills and agents, two documented gates that were never built, three mirror-sync integrity holes, and a field-proven pack rule that never reached the built-in. This binder fixes each one and pins every fix to the bench probe that found it, so the repair is machine-verifiable and cannot silently come back.",
+  "motivation": "The 2026-07-21 baseline recorded 103 findings across 13 measured vectors; this binder clears the fix-worthy ones and locks each behind the probe that caught it, so any regression re-trips the gate.",
+  "scope": {
+    "included": [
+      "The status-page render surface skills/karta-status/scripts/serve_status.py and its two generated mirrors (.agents/skills/, plugins/karta/skills/)",
+      "The SessionStart context hook hooks/scripts/inject_karta_status.py",
+      "Documentation truth: README.md, docs/how-to/claude-code.md, docs/how-to/codex.md, docs/how-to/kaizen.md, .claude-plugin/marketplace.json, docs/conventions/phase-labels.md, and the count-claim ledger benchmarks/claims.yaml",
+      "The repo plugin validator scripts/validate_plugin.py (implement the promised doc-gardner schema gate; recompute external skill content hashes)",
+      "The mirror generator scripts/sync_codex_skills.py and, if needed, scripts/check_shared_copies.py, plus skills-lock.json (external-skill hash baseline)",
+      "The built-in Go+htmx pack skills/_shared/sme/go-htmx.md and its shared-copy and mirror projections (skills/karta-{build,plan,verify}/references/sme/, .agents/, plugins/karta/)",
+      "The bench probes under benchmarks/probes/ used strictly as fixed, re-runnable oracles"
+    ],
+    "excluded": [
+      "Any real user-repo config-validation feature (validate_plugin hard-anchors ROOT to the karta repo by design; a consumer repo validates its own copy with the shipped skill schema and a one-liner)",
+      "Any plugin/marketplace version bump \u2014 the go-htmx promotion touches a shipped surface and owes a version bump at the next release, recorded here, not performed in this binder",
+      "Any change to the go-htmx match tokens (match stays ['htmx', 'htmx.org', 'github.com/a-h/templ'])",
+      "Editing the bench probes' own detection or self-test logic \u2014 the probes are used as fixed oracles, not modified by the items they verify",
+      "The 11 unmeasured bench vectors (dark-ledger-burndown, dark-midwave-crash-resume, sme-fixture-campaign, perf-context-latency-floors, perf-fixture-cost-baseline, quality-oracle-discrimination, quality-doc-gardner-recall, release-gate-blocking-smoke, bench-self-integrity, consumer-upgrade-compat, model-refresh-sentinel) and the probes' phase-3 live claude -p cells"
+    ]
+  },
+  "design_facts": {
+    "source": "benchmarks/results/2026-07-21-baseline.md",
+    "stack": "Claude Code + Codex plugin repo: stdlib-python hooks/scripts + markdown; no package manifests, so detect_stack returns {\"dependencies\":[],\"languages\":[]} and no stack pack matched. The shipped surface (skills/, agents/, hooks/hooks.json and their .agents/, .claude/skills/, .codex/, plugins/karta/ mirrors, plus .claude-plugin/marketplace.json) is generated from canonical sources and guarded byte-for-byte by scripts/validate_plugin.py, scripts/check_shared_copies.py, and scripts/sync_codex_skills.py --check; repo-local surfaces (scripts/, benchmarks/, docs/, .karta/, .claude/settings.json) do not ship. Edited/new scripts follow the house precedent: pure stdlib, PEP 723 header (requires-python >=3.11, dependencies []), argparse, an embedded --self-test printing [PASS]/[FAIL] lines and an N/N checks passed summary, git facts read through plumbing, fail-open where the code is a hook. Bench probes at benchmarks/probes/<id>.py run as python3 <probe> --target <root> and emit the gate JSON contract {\"id\",\"status\",\"partial\",\"implemented_checks\",\"findings\",\"metrics\"}; each is a baseline-regression gate reading its baseline from git, so a fix lowers a count without ever tripping the gate. This binder uses them as fixed oracles and does not touch their logic."
+  },
+  "env_contract": {
+    "command": "python3 scripts/validate_plugin.py --self-test",
+    "supports_isolation": true,
+    "isolation_params": [],
+    "cwd": "."
+  },
+  "sme": [
+    "karta-house-skill-authoring",
+    "minimalism"
+  ],
+  "shared_terms": [],
+  "work_items": [
+    {
+      "id": "serve-status-escape",
+      "title": "Escape untrusted binder text before the status page renders it",
+      "summary": "Make the karta status server render every binder-derived and repo-derived string inertly, so a hostile binder string cannot execute in the owner's browser, and keep the frozen unescaped-sink count at zero.",
+      "estimate": "M",
+      "depends_on": [],
+      "contract": "skills/karta-status/scripts/serve_status.py today interpolates binder-derived and repo-derived strings into both the / HTML page and the /state.json response with ZERO html.escape calls; benchmarks/probes/sec-untrusted-input-surfaces.py freezes 7 unescaped sinks (index::archive-xss, index::img-onerror, index::inject-sentence, state_json::archive-xss, state_json::img-onerror, state_json::inject-sentence, state_json::script-tag), 3 of them reaching the rendered HTML. FIX: every render of binder-derived or repo-derived text into the / page and into the /state.json body must be html-escaped (or otherwise transformed so the raw attacker payload bytes never appear in the response) \u2014 the probe's _grep_sinks does a byte-grep of each payload against the response, so both the index:: and state_json:: sinks must clear and the frozen list must reach 0 and STAY 0 (a reappearing sink is a regression). html.escape is a no-op for benign strings (no <>&\"'), so benign visual output is unchanged \u2014 serve_status.py mirrors a Claude Design page and must look identical for normal content. Do NOT change the bind address (the probe's bind-scope cell asserts '127.0.0.1' present and '0.0.0.0' absent) and do NOT weaken the --key gate (the key-gate cell asserts a keyless request is refused 403 and a keyed one is allowed 200). serve_status.py is a shipped, mirrored surface: after editing the canonical, regenerate its two projections (.agents/skills/karta-status/scripts/serve_status.py and plugins/karta/skills/karta-status/scripts/serve_status.py) with scripts/sync_codex_skills.py so validate_plugin's byte-parity check and sync --check stay green. Read benchmarks/probes/sec-untrusted-input-surfaces.py (CELL_NAMES, _grep_sinks, probe_p1) and benchmarks/sec/sec-untrusted-input-surfaces.md for the exact contract. PANEL AMENDMENTS (roundtable 2026-07-21): (1) JSON correctness \u2014 do NOT naively html.escape inside /state.json string values: default html.escape mangles quotes and entities for JSON clients. Clear the state_json:: sinks with a transform that is correct for the consumer: understand how the watch page consumes state.json (DOM insertion path) and neutralize payload bytes consistently with that path (e.g. escape at render on the HTML side, and for the JSON body use a JSON-correct neutralization such as escaping markup-significant characters into unicode escapes) \u2014 the probe's bar is a byte-grep: raw payload bytes must not appear in either response. Document the two paths (HTML vs JSON) in the script. (2) serve_status.py must carry a --self-test per the house pack (it is being edited): cases for each escape path AND a benign-content byte-identity case (a string with no markup characters renders byte-identical). The oracle runs it.",
+      "touches": [
+        "skills/karta-status/scripts/serve_status.py",
+        ".agents/skills/karta-status/scripts/serve_status.py",
+        "plugins/karta/skills/karta-status/scripts/serve_status.py"
+      ],
+      "oracle": {
+        "type": "integration",
+        "command": "python3 skills/karta-status/scripts/serve_status.py --self-test && python3 scripts/validate_plugin.py && python3 scripts/check_shared_copies.py && python3 scripts/sync_codex_skills.py --check && python3 benchmarks/probes/sec-untrusted-input-surfaces.py --target . | python3 -c \"import sys,json;d=json.load(sys.stdin);m=d['metrics'];sys.exit(0 if (m['unescaped_sink_count']==0 and not m['unescaped_sinks'] and m['bind_scope'] and m['key_gate'] and d['status']=='pass') else 1)\"",
+        "assertions": [
+          "sec-untrusted-input-surfaces.py --target . reports metrics.unescaped_sink_count 0 and an empty unescaped_sinks list (all 7 frozen sinks, index:: and state_json::, cleared); the probe status stays pass (no new sink beyond the frozen list, no passing cell flipped)",
+          "the escaped-render cell is good, and the bind-scope cell (127.0.0.1 present, 0.0.0.0 absent, server reachable) and key-gate cell (keyless 403, keyed 200) remain good",
+          "benign binder content renders visually identical (html.escape is a no-op on strings with no <, >, &, quote characters)",
+          "python3 scripts/validate_plugin.py reports PLUGIN INTEGRITY: PASS and python3 scripts/sync_codex_skills.py --check reports IN SYNC (the two serve_status.py mirrors were regenerated byte-for-byte)",
+          "serve_status.py --self-test passes, including per-escape-path cases and a benign-content byte-identity case (house pack: edited scripts ship a self-test)"
+        ]
+      },
+      "surface": {
+        "flagged": true,
+        "signals": [
+          "sensitive-zone: security fix on the status page's rendered output \u2014 attacker-controlled binder strings reach a browser",
+          "contract: /state.json bytes change for hostile payloads (escaped) \u2014 benign content byte-identical"
+        ]
+      },
+      "shared_resources": [
+        "scripts/sync_codex_skills.py"
+      ]
+    },
+    {
+      "id": "inject-inert-delimiter",
+      "title": "Wrap injected status text in an inert delimiter so a poisoned binder cannot instruct the model",
+      "summary": "Fence the repo-derived text the SessionStart hook pipes into every session inside an inert delimiter, so a poisoned binder string arrives as data, not as undelimited instruction, while the hook stays fail-open and silent.",
+      "estimate": "S",
+      "depends_on": [],
+      "contract": "hooks/scripts/inject_karta_status.py runs on SessionStart and prints repo-derived text (binder slugs, item counts, pinned packs, the next action) straight into session context with no inert delimiter \u2014 benchmarks/probes/sec-untrusted-input-surfaces.py probe_p2 records this as the injection-inertness cell being red today (a poisoned binder string is undelimited instruction). FIX: wrap the emitted repo-derived block in an inert delimiter the probe's _is_delimited recognizer accepts \u2014 one of a matched <karta-status ...> ... </karta-status> sentinel pair, a fenced ``` ... ``` block, or a BEGIN KARTA ... END KARTA pair (see _DELIM_PAIRS). The block must stay under the pinned injection_byte_budget in benchmarks/fixtures/adversarial/expected.json (currently 4096; today's output is ~152 bytes, so a wrapper is comfortably within budget). The hook must remain fail-open and silent on any error (exit 0, no output on failure), stay under MAX_LINES, and emit nothing when there are no binders. Update the embedded --self-test so it asserts the delimiter is present (and keep every existing behavior check green). This file is NOT mirrored (single copy under hooks/scripts/); scripts/validate_plugin.py runs its --self-test on every run, so the self-test must pass. Read benchmarks/probes/sec-untrusted-input-surfaces.py (_is_delimited, _DELIM_PAIRS, probe_p2) for the exact accepted shapes. PANEL AMENDMENTS: (1) Pin the delimiter to exactly what the probe recognizes \u2014 read _is_delimited / the delimiter recognizer in benchmarks/probes/sec-untrusted-input-surfaces.py and match one recognized shape precisely; do not invent a variant. (2) The wrapper must be unbreakable from inside: neutralize any occurrence of the closing marker (and fence markers if a fenced shape is chosen) within the repo-derived payload before wrapping, and add a self-test case that injects the closing marker and asserts the wrapper survives. (3) Define budget-overflow behavior explicitly: when payload plus wrapper would exceed the injection size budget, truncate the payload (never the wrapper) and say so in the injected text; self-test the overflow path.",
+      "touches": [
+        "hooks/scripts/inject_karta_status.py"
+      ],
+      "oracle": {
+        "type": "integration",
+        "command": "python3 hooks/scripts/inject_karta_status.py --self-test && python3 scripts/validate_plugin.py && python3 benchmarks/probes/sec-untrusted-input-surfaces.py --target . | python3 -c \"import sys,json;d=json.load(sys.stdin);m=d['metrics'];sys.exit(0 if (m['injection_delimited'] is True and m['injection_bytes']<=m['injection_budget'] and d['status']=='pass') else 1)\"",
+        "assertions": [
+          "sec-untrusted-input-surfaces.py --target . reports metrics.injection_delimited true (the injected block is wrapped in an inert delimiter the _is_delimited recognizer accepts) and injection_bytes <= injection_budget; probe status stays pass",
+          "inject_karta_status.py --self-test exits 0 with [PASS] lines and an N/N checks passed summary and no [FAIL], including a new check that the emitted block is delimited",
+          "the hook still emits nothing when there are no binders, stays within MAX_LINES, and fails open and silent (exit 0, no output) on error",
+          "python3 scripts/validate_plugin.py reports PLUGIN INTEGRITY: PASS (it runs the hook's --self-test)"
+        ]
+      },
+      "surface": {
+        "flagged": true,
+        "signals": [
+          "sensitive-zone: the SessionStart hook feeds repo-derived text into model context \u2014 the injection surface itself",
+          "contract: the injected block gains an inert delimiter \u2014 additive format change consumed by every session"
+        ]
+      }
+    },
+    {
+      "id": "doc-count-truth",
+      "title": "Correct the skill and agent counts, stale pins, missing discoverability, and label roots",
+      "summary": "Fix the twelve non-ledger documentation-truth violations so the docs state karta's real skill and agent counts, drop the stale major-version pin, make karta-status discoverable, and register the missing label roots, keeping every count claim bound to the claims ledger.",
+      "estimate": "M",
+      "depends_on": [],
+      "contract": "Resolve the twelve non-ledger doc-truth violations benchmarks/probes/parity-doc-truth-ledger.py --target . currently reports (truth vars N_agents=4, N_skills=10). Lane B (7 failed-expect): README.md 'Five skills do the work' (readme-five-skills-flow) and '## The five skills' (readme-five-skills-heading) both state 5 against truth 10; README.md '## The two agents' (readme-two-agents-heading) states 2 against truth 4; docs/how-to/claude-code.md 'its skills and three agents' (claude-code-three-agents-intro) and 'registers three agents' (claude-code-three-agents-registers) state 3 against truth 4; .claude-plugin/marketplace.json 'orchestration skills ... two read-only gate agents' (marketplace-two-gate-agents-plugin-desc) and 'Ships two read-only gate agents' (marketplace-two-gate-agents-detail-desc) state 2 against truth 4. TRUST-CRITICAL: the marketplace and README agent claims must disclose all four agents INCLUDING the two writers karta-doc-gardner and karta-kaizen (naming them, not just bumping a count) \u2014 a plain '4' that omits the writers passes the count oracle but is still an incomplete disclosure. Lane C (2): docs/how-to/codex.md pins 'Karta 1.19' twice at current major 2 \u2014 drop the stale major pin (prefer version-free wording, or the current major). Lane D (1): karta-status appears in no README/how-to prose \u2014 introduce it in README.md (and/or a how-to) so lane D's corpus finds the directory name. Lane G (2): the label roots docgardner (labels live in skills/karta-doc-gardner/SKILL.md) and kaizen (labels live in skills/karta-kaizen/SKILL.md) are missing from the Roots table in docs/conventions/phase-labels.md \u2014 add both rows pointing at those exact docs (a wrong doc-path row is itself a violation). MECHANISM (add-only ledger benchmarks/claims.yaml): lane B binds every count-claim regex hit in README/docs/how-to/marketplace.json to a claims.yaml entry whose line-regex matches and whose expect holds. For every reworded sentence, keep its binding correct in the SAME item \u2014 update the entry's line-regex to match the new sentence when a count remains and equals truth, OR, where a count adds no value, prefer count-free prose that no longer matches COUNT_RE at all AND mark the now-orphaned entry retired (retired: <reason>) so it is skipped, never left to become a stale-entry violation. Do NOT delete a claims entry; retired counts are reported. Do not introduce any new unadjudicated-claim, stale-entry, or bad-expect violation, and keep every claim you do not rewrite matching its line (e.g. README 'plus four agents' already reads truth). This item does NOT touch the two lane-E ledger promises (DG-SCHEMA, KAIZEN-USERREPO) \u2014 those are promise-reconciliation. Read benchmarks/claims.yaml and benchmarks/probes/parity-doc-truth-ledger.py (COUNT_RE, lane_b, lane_c, lane_d, lane_g, compute_truth) first; prose edits follow karta-plainlanguage.",
+      "touches": [
+        "README.md",
+        "docs/how-to/claude-code.md",
+        "docs/how-to/codex.md",
+        ".claude-plugin/marketplace.json",
+        "docs/conventions/phase-labels.md",
+        "benchmarks/claims.yaml"
+      ],
+      "shared_resources": [
+        "benchmarks/claims.yaml"
+      ],
+      "oracle": {
+        "type": "unit",
+        "command": "python3 benchmarks/probes/parity-doc-truth-ledger.py --self-test && python3 scripts/validate_plugin.py && python3 benchmarks/probes/parity-doc-truth-ledger.py --target . | python3 -c \"import sys,json;d=json.load(sys.stdin);ids={f['finding_id'] for f in d['findings']};gone={'B:failed-expect:claude-code-three-agents-intro','B:failed-expect:claude-code-three-agents-registers','B:failed-expect:marketplace-two-gate-agents-detail-desc','B:failed-expect:marketplace-two-gate-agents-plugin-desc','B:failed-expect:readme-five-skills-flow','B:failed-expect:readme-five-skills-heading','B:failed-expect:readme-two-agents-heading','C:stale-pin:docs/how-to/codex.md:1.19:1','C:stale-pin:docs/how-to/codex.md:1.19:2','D:undiscoverable:karta-status','G:unregistered-root:docgardner','G:unregistered-root:kaizen'};new_b=[i for i in ids if i.startswith(('B:unadjudicated','B:stale-entry','B:bad-expect','B:no-claims','B:bad-claims'))];sys.exit(0 if (not (gone & ids) and not new_b and d['status']=='pass') else 1)\" && python3 -c \"import sys; texts={f: open(f).read() for f in ('README.md', '.claude-plugin/marketplace.json')}; missing=[(f,n) for f,t in texts.items() for n in ('karta-doc-gardner','karta-kaizen') if n not in t]; sys.exit(1 if missing else 0)\"",
+        "assertions": [
+          "parity-doc-truth-ledger.py --target . no longer reports any of the twelve finding ids: the 7 lane-B failed-expect, the 2 lane-C stale-pin (codex.md 1.19), lane-D karta-status, and the 2 lane-G unregistered roots (docgardner, kaizen)",
+          "no NEW lane-B violation is introduced (no unadjudicated-claim, stale-entry, bad-expect, or claims-file error) \u2014 every reworded count claim is rebound or retired in benchmarks/claims.yaml in this same item",
+          "the marketplace and README agent disclosures name all four agents including the writers karta-doc-gardner and karta-kaizen",
+          "the probe self-test still passes 15/15 (its lane logic is fixture-driven and independent of repo content), and python3 scripts/validate_plugin.py reports PLUGIN INTEGRITY: PASS; the probe status remains pass (fixes only lower lane counts, never a regression)",
+          "trust-critical disclosure is textual, not numeric: README.md and .claude-plugin/marketplace.json each NAME karta-doc-gardner and karta-kaizen (the two writer agents) \u2014 asserted by grep, not by count",
+          "regression guard covers every lane, not only lane B: after this item the probe's full findings set is exactly the two lane-E promises (E:ledger:DG-SCHEMA, E:ledger:KAIZEN-USERREPO) that wave 2 resolves \u2014 no new violation in any lane (B/C/D/F/G)"
+        ]
+      },
+      "surface": {
+        "flagged": true,
+        "signals": [
+          "contract: .claude-plugin/marketplace.json listing text changes \u2014 the trust-critical disclosure that two of four agents write to the user's repo",
+          "blast-radius: six files across README, three how-tos, marketplace.json, and the claims ledger"
+        ]
+      }
+    },
+    {
+      "id": "promise-reconciliation",
+      "title": "Build the promised doc-gardner schema gate and retire the false user-repo validation promise",
+      "summary": "Make the plugin validator actually schema-check a committed doc-gardner config the way the design and how-to already claim, and retire the kaizen user-repo validation promise the validator was never able to keep, correcting the how-to to the truth.",
+      "estimate": "M",
+      "depends_on": [
+        "doc-count-truth",
+        "mirror-sync-integrity"
+      ],
+      "contract": "Reconcile the two lane-E ledger promises benchmarks/probes/parity-doc-truth-ledger.py reports (DG-SCHEMA, KAIZEN-USERREPO). (1) DG-SCHEMA \u2014 IMPLEMENT the promised gate. docs/specs/2026-06-18-doc-gardner-design.md section 5 promises validate_plugin.py validates a committed .karta/doc-gardner.json against skills/karta-doc-gardner/references/doc-gardner-schema.json, and docs/how-to/doc-gardner.md already states this gating as fact ('The file shape is gated by ...'). That schema file exists (required: [enabled]; additionalProperties false; enabled boolean; optional focus string). Enhance the existing doc-gardner block in scripts/validate_plugin.py (block 6, around lines 235-248) so that, when .karta/doc-gardner.json is present, it hand-rolls a stdlib shape check against the schema SEMANTICS \u2014 no jsonschema dependency \u2014 enforcing enabled required-and-boolean, focus (if present) a string, and no key outside {enabled, focus}; an ABSENT config stays valid. The block must reference the schema file skills/karta-doc-gardner/references/doc-gardner-schema.json by path so the DG-SCHEMA ledger grep (py-grep over scripts/hooks/skills for doc-gardner-schema[.]json, expect >=1) matches scripts/validate_plugin.py and the promise is genuinely met \u2014 NO claims.yaml change for DG-SCHEMA. Add fixture-driven self-test cases (a valid config passes; missing enabled, non-boolean enabled, non-string focus, and an unknown key each fail) wired so python3 scripts/validate_plugin.py --self-test exercises them and stays green while python3 scripts/validate_plugin.py still reports PLUGIN INTEGRITY on the real repo (which ships no .karta/doc-gardner.json, so the real run stays clean). (2) KAIZEN-USERREPO \u2014 doc-truth fix, not code. docs/how-to/kaizen.md line ~21 states 'the plugin validator schema-checks the file when your repo commits one', which is false for user repos (validate_plugin hard-anchors ROOT to the karta repo, so it only ever gates karta's OWN .karta/kaizen.json). Reword to the truth: the schema ships with the karta-kaizen skill (skills/karta-kaizen/references/kaizen-schema.json), karta gates its own committed copy, and a consumer repo can validate its own config with a one-liner (include a concrete command). RETIRE the KAIZEN-USERREPO entry in the benchmarks/claims.yaml ledger with a retired: <reason> key (add-only ledger: a retired entry is skipped by lane E and counted in retired_ledger, never deleted). Depends on doc-count-truth (both edit benchmarks/claims.yaml) and mirror-sync-integrity (both edit scripts/validate_plugin.py). Read benchmarks/claims.yaml, benchmarks/probes/parity-doc-truth-ledger.py (lane_e, py-grep/py-co-grep, retired handling), and scripts/validate_plugin.py first. PANEL AMENDMENTS: (1) Pin the consumer one-liner in the reworded kaizen.md \u2014 a concrete stdlib command a user repo can run against its own .karta/kaizen.json, e.g.: python3 -c \"import json; d=json.load(open('.karta/kaizen.json')); assert type(d.get('enabled')) is bool, 'enabled must be true/false'; print('kaizen.json OK')\" (builder may refine the command; the oracle asserts kaizen.md contains a python3 validation command). (2) Boolean checks in the hand-rolled validator must use type(x) is bool \u2014 bool is an int subclass, so isinstance-with-int accepts enabled: 1; include a self-test case where enabled: 1 FAILS. (3) A missing or unreadable doc-gardner-schema.json at validate time is a clean reported failure (the schema ships with the plugin; absence is an integrity defect), never an unhandled crash \u2014 self-test this path.",
+      "touches": [
+        "scripts/validate_plugin.py",
+        "benchmarks/claims.yaml",
+        "docs/how-to/kaizen.md"
+      ],
+      "shared_resources": [
+        "benchmarks/claims.yaml",
+        "scripts/validate_plugin.py"
+      ],
+      "oracle": {
+        "type": "unit",
+        "command": "python3 benchmarks/probes/parity-doc-truth-ledger.py --self-test && python3 scripts/validate_plugin.py && python3 scripts/validate_plugin.py --self-test && python3 -c \"import sys,pathlib;t=pathlib.Path('docs/how-to/kaizen.md').read_text();sys.exit(0 if ('schema-checks the file when your repo commits one' not in t) else 1)\" && python3 benchmarks/probes/parity-doc-truth-ledger.py --target . | python3 -c \"import sys,json;d=json.load(sys.stdin);ids={f['finding_id'] for f in d['findings']};ok=('E:ledger:DG-SCHEMA' not in ids) and ('E:ledger:KAIZEN-USERREPO' not in ids) and d['metrics'].get('retired_ledger',0)>=1 and d['status']=='pass';sys.exit(0 if ok else 1)\" && python3 -c \"import re,sys; t=open('docs/how-to/kaizen.md').read(); sys.exit(0 if re.search(r'python3 -c', t) else 1)\"",
+        "assertions": [
+          "parity-doc-truth-ledger.py --target . no longer reports E:ledger:DG-SCHEMA (scripts/validate_plugin.py now references doc-gardner-schema.json and hand-rolls the schema shape check, so the py-grep finds >=1 file) \u2014 with NO benchmarks/claims.yaml change to DG-SCHEMA",
+          "parity-doc-truth-ledger.py --target . no longer reports E:ledger:KAIZEN-USERREPO and metrics.retired_ledger is >= 1 (the ledger entry is retired, not deleted)",
+          "docs/how-to/kaizen.md no longer contains the false clause 'schema-checks the file when your repo commits one' and instead states the truth with a concrete one-liner a consumer repo can run against its own config",
+          "python3 scripts/validate_plugin.py reports PLUGIN INTEGRITY: PASS (real repo, no .karta/doc-gardner.json \u2014 absent stays valid) and python3 scripts/validate_plugin.py --self-test passes the new doc-gardner schema cases; the probe self-test stays 15/15 and probe status stays pass",
+          "the reworded kaizen.md carries a concrete python3 one-liner a consumer repo can run against its own config (asserted by grep); the false 'when your repo commits one' promise is gone",
+          "validator self-test includes: enabled: 1 rejected (bool-not-int), missing schema file reported cleanly"
+        ]
+      },
+      "surface": {
+        "flagged": true,
+        "signals": [
+          "contract: scripts/validate_plugin.py gains a new gate (doc-gardner config schema check) \u2014 additive enforcement on every future commit",
+          "contract: a claims-ledger entry is retired (add-only ledger; retired count stays visible)"
+        ]
+      }
+    },
+    {
+      "id": "mirror-sync-integrity",
+      "title": "Project exec bits, survive a degraded lock, and detect tampered external skills",
+      "summary": "Close the three mirror-sync integrity holes so an executable bit reaches the projections, a degraded lock entry never destroys an external skill, and a tampered external skill is caught by both the drift check and the plugin validator.",
+      "estimate": "L",
+      "depends_on": [],
+      "contract": "benchmarks/probes/parity-mirror-sync-integrity.py drives three drills, all red today, against scripts/sync_codex_skills.py (LOCK_FIELDS at :39 include computedHash). P1 exec-bit-projection: write-mode sync compares bytes only (projection_drift / write loop use read_bytes), so chmod +x on a canonical skills/*/scripts/*.py never reaches its .agents/skills/ or plugins/karta/ projection \u2014 write mode must project the canonical file's mode (at least the executable bit) onto both projections. P2 lock-degradation-survival: a skills-lock.json entry with computedHash removed currently makes write-mode sync treat the external skill as an orphan, rmtree it, then crash on the stale have-set \u2014 instead a degraded/incomplete lock entry must be treated as recompute-needed and left in place (recompute/repair its content hash), NEVER destructively removed, and write mode must not crash. P3 external-hash-liveness: a tampered external SKILL.md passes both sync --check and validate_plugin today because computedHash is never recomputed against content \u2014 recompute the external skill's content hash and FAIL on mismatch in BOTH scripts/sync_codex_skills.py --check (exit non-zero, naming the skill) and scripts/validate_plugin.py (error naming the skill). CRITICAL INVARIANT: the committed skills-lock.json computedHash values for the three real external skills (plannotator-compound/setup-goal/visual-explainer) are NOT the plain sha256 of the local SKILL.md (verified: local sha256 230a73... != stored b56536...), so a naive sha256(local-SKILL.md) vs stored comparison would FALSE-POSITIVE and break validate_plugin PASS and sync --check IN SYNC on the untouched repo \u2014 which would break the floor for the whole binder. The recompute must therefore establish a local-content baseline that matches untampered content and only flips on a genuine change: the mechanically-feasible path is to have write-mode sync recompute and store the local content hash into computedHash (the same 'recompute-needed, never destructive' behavior P2 needs), so an untampered tree matches and only a tampered SKILL.md mismatches \u2014 this updates the three plannotator computedHash values in skills-lock.json to local content hashes and changes computedHash's meaning to a local-content hash (declare skills-lock.json in touches; this is a surfaced, reviewer-visible semantic change, not a silent one). If instead the external installer's exact hashing can be reproduced, use that and leave skills-lock.json unchanged. Either way the acceptance is the same: validate_plugin PASS and sync --check IN SYNC on the untouched externals (no false positive), and a tampered external SKILL.md flagged by name in both. On the real repo no canonical skills/*/scripts/*.py is currently executable, so the exec-bit fix is a no-op there (it must not create new mirror drift). Update the embedded --self-test of scripts/sync_codex_skills.py (and scripts/check_shared_copies.py only if the fix touches it). The mirror-sync probe's OWN --self-test hard-codes the pre-fix (defect-present) drill outcomes and will go red once the drills pass; per this binder's doctrine the probe is a fixed oracle and is NOT edited here (its live --target run, not its self-test, is the oracle) \u2014 see notes. Read benchmarks/probes/parity-mirror-sync-integrity.py (DRILL_IDS, drill_p1/p2/p3, _derive_external, SEED_SUMMARIES) and scripts/sync_codex_skills.py first. PANEL AMENDMENTS: (1) Hash provenance \u2014 the DEFAULT path is re-baseline: write-mode recompute stores sha256 of the local external SKILL.md into computedHash, mutating the three plannotator entries (reviewer-visible; declare them in the item report). Reproducing the installer's hashing is permitted ONLY with proof (cite the installer source/algorithm); when neither path is provable the item HALTS: nonzero exit with a FATAL message naming skills-lock.json hash provenance \u2014 never a silent or false-positive pass. (2) Atomicity \u2014 the lock re-baseline and the recompute-enforcement code land in the SAME commit: enforcement without re-baseline false-positives the whole repo; re-baseline without enforcement is tamper-blind. (3) Document the new semantics in the sync script docstring: computedHash = sha256 of the external skill's SKILL.md bytes as synced locally. (4) P2 covers BOTH degradation shapes \u2014 computedHash removed from an entry, and the entire lock entry absent while the skill directory exists \u2014 neither is destructive; both are recompute-needed. A DELIBERATE removal (entry gone AND skill directory gone from canonical intent) still cleans up. Pin --check semantics for degraded entries: degraded = check failure with a recompute instruction, never silent. (5) Self-test cases required: temp +x canonical projects the exec bit (P1); degraded-entry keeps files; missing-entry keeps files; deliberate-removal cleans; tampered SKILL.md fails --check (P3); enabled-recompute over the re-baselined lock passes on the untouched repo.",
+      "touches": [
+        "scripts/sync_codex_skills.py",
+        "scripts/validate_plugin.py",
+        "scripts/check_shared_copies.py",
+        "skills-lock.json"
+      ],
+      "shared_resources": [
+        "scripts/sync_codex_skills.py",
+        "scripts/validate_plugin.py"
+      ],
+      "oracle": {
+        "type": "unit",
+        "command": "python3 scripts/validate_plugin.py && python3 scripts/check_shared_copies.py && python3 scripts/sync_codex_skills.py --check && python3 scripts/sync_codex_skills.py --self-test && python3 benchmarks/probes/parity-mirror-sync-integrity.py --target . | python3 -c \"import sys,json;d=json.load(sys.stdin);m=d['metrics'];errs=[f for f in d['findings'] if f.get('severity')=='error'];sys.exit(0 if (m['probes_passed']==m['probes_total'] and m['checks_failed']==0 and not errs and d['status']=='pass') else 1)\"",
+        "assertions": [
+          "parity-mirror-sync-integrity.py --target . reports probes_passed == probes_total (all 3 drills pass), checks_failed 0, and no error-severity findings; probe status stays pass",
+          "P1: write-mode sync projects the canonical executable bit onto the .agents/skills/ and plugins/karta/ projections; P2: a degraded lock entry (computedHash removed) leaves the external skill in place (no rmtree) and write mode does not crash; P3: a tampered external SKILL.md is flagged by name by both sync --check (exit non-zero) and validate_plugin",
+          "python3 scripts/validate_plugin.py reports PLUGIN INTEGRITY: PASS and python3 scripts/sync_codex_skills.py --check reports IN SYNC on the untouched external skills \u2014 the recompute does NOT false-positive on the committed plannotator externals",
+          "scripts/sync_codex_skills.py --self-test and scripts/check_shared_copies.py stay green"
+        ]
+      },
+      "surface": {
+        "flagged": true,
+        "signals": [
+          "open-question: skills-lock.json computedHash provenance is unknown \u2014 stored hashes do not match local content and no local generator exists; the item must either re-baseline to local content (mutating 3 plannotator entries, reviewer-visible) or reproduce the installer's hashing, and must halt rather than false-positive if neither holds",
+          "destructive-op: the current orphan path rmtrees an external skill \u2014 the fix changes deletion semantics to recompute-needed, never destructive",
+          "contract: skills-lock.json computedHash field meaning may change from installer-hash to local-content-hash"
+        ]
+      }
+    },
+    {
+      "id": "promote-htmx8",
+      "title": "Promote the field-proven templ whitespace rule htmx.8 into the built-in Go+htmx pack",
+      "summary": "Move the kaizen-added htmx.8 rule from the gringotts overlay into the built-in Go and htmx pack's Review checklist, verbatim, and regenerate every shared-copy and mirror projection so the pack stays byte-consistent everywhere it ships.",
+      "estimate": "S",
+      "depends_on": [],
+      "contract": "The kaizen overlay at /mnt/agent-storage/vader/src/gringotts/.karta/sme/go-htmx.md carries a field-proven eighth Review-checklist rule the built-in pack lacks. Copy that rule VERBATIM as the new htmx.8 item, appended after htmx.7 in the '## Review checklist' section of the built-in canonical skills/_shared/sme/go-htmx.md. The exact text to add is: '- [ ] htmx.8 \u2014 A changed `.templ` text line with optional segments either (a) receives the full line as one pre-formatted view-model string (nil-handling in Go), or (b) when the no-segment output must stay byte-identical \u2014 an exact-output test asserts it, or the line sits in a whitespace-significant context (`pre`, `code`, `title`, `textarea`, attribute values) \u2014 is an exhaustive if/else branch chain of complete lines. In normal HTML flow an appended conditional segment is acceptable; templ's emitted space is harmless there.' Add ONLY this checklist rule \u2014 do NOT bring over the overlay's extra Do/Patterns prose, and do NOT change the built-in's match tokens (match stays ['htmx', 'htmx.org', 'github.com/a-h/templ']) or its description. go-htmx.md is a shared pack copied into three skills and mirrored twice, so after editing the canonical you MUST propagate it to all nine projections per the house rule: copy to skills/karta-build/references/sme/go-htmx.md, skills/karta-plan/references/sme/go-htmx.md, skills/karta-verify/references/sme/go-htmx.md (byte-identical, enforced by scripts/check_shared_copies.py), then run scripts/sync_codex_skills.py to regenerate the .agents/skills/ and plugins/karta/skills/ copies of all three (enforced by scripts/validate_plugin.py). The canonical is 3493 bytes today; adding htmx.8 pushes it over the 3500-byte pack size line, so scripts/validate_packs.py will emit a size WARNING \u2014 that is warn-only (exit 0), expected, and acceptable. SHIPPED SURFACE: this changes a distributed pack, so a plugin/marketplace version bump is OWED at the next release \u2014 recorded here, deliberately NOT performed in this binder. Read the gringotts overlay and skills/_shared/sme/go-htmx.md first.",
+      "touches": [
+        "skills/_shared/sme/go-htmx.md",
+        "skills/karta-build/references/sme/go-htmx.md",
+        "skills/karta-plan/references/sme/go-htmx.md",
+        "skills/karta-verify/references/sme/go-htmx.md",
+        ".agents/skills/karta-build/references/sme/go-htmx.md",
+        ".agents/skills/karta-plan/references/sme/go-htmx.md",
+        ".agents/skills/karta-verify/references/sme/go-htmx.md",
+        "plugins/karta/skills/karta-build/references/sme/go-htmx.md",
+        "plugins/karta/skills/karta-plan/references/sme/go-htmx.md",
+        "plugins/karta/skills/karta-verify/references/sme/go-htmx.md"
+      ],
+      "oracle": {
+        "type": "unit",
+        "command": "python3 skills/karta-kaizen/scripts/validate_packs.py skills/_shared/sme/go-htmx.md && python3 scripts/check_shared_copies.py && python3 scripts/sync_codex_skills.py --check && python3 scripts/validate_plugin.py && python3 -c \"import sys,pathlib;t=pathlib.Path('skills/_shared/sme/go-htmx.md').read_text();sys.exit(0 if ('- [ ] htmx.8 \u2014' in t) else 1)\" && python3 benchmarks/probes/sme-pack-static-suite.py --target . --consumers /mnt/agent-storage/vader/src/parchmark,/mnt/agent-storage/vader/src/gringotts | python3 -c \"import sys,json;d=json.load(sys.stdin);sys.exit(0 if d['status']=='pass' else 1)\"",
+        "assertions": [
+          "skills/_shared/sme/go-htmx.md carries the new htmx.8 checklist rule verbatim (appended after htmx.7), the match tokens and description are unchanged, and python3 skills/karta-kaizen/scripts/validate_packs.py skills/_shared/sme/go-htmx.md exits 0 (a size warning above 3500 bytes is warn-only and expected)",
+          "python3 scripts/check_shared_copies.py reports SHARED COPIES: IN SYNC (all three references/sme/go-htmx.md byte-identical to the canonical) and python3 scripts/sync_codex_skills.py --check reports IN SYNC (all six .agents/ and plugins/karta/ projections regenerated)",
+          "python3 scripts/validate_plugin.py reports PLUGIN INTEGRITY: PASS",
+          "benchmarks/probes/sme-pack-static-suite.py --target . --consumers <parchmark>,<gringotts> reports status pass (no regression from the promotion)"
+        ]
+      },
+      "surface": {
+        "flagged": false,
+        "signals": [
+          "note: additive advisory rule on a shipped pack, text promoted verbatim from the gringotts overlay; version bump owed at the next release, not here; byte-parity enforced by sync + shared-copies gates"
+        ]
+      },
+      "shared_resources": [
+        "scripts/sync_codex_skills.py"
+      ]
+    }
+  ]
+}

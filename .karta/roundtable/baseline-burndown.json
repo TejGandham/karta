@@ -1,0 +1,55 @@
+{
+  "reviewed_hash": "840f9f81120839e259cbc0df9804017b85bc01708fd818f1061ec53908a0a558",
+  "tool": "roundtable-critique",
+  "target_kind": "binder",
+  "target_ref": "baseline-burndown",
+  "run_at": "2026-07-21T16:42:49.171603+00:00",
+  "config_snapshot": {
+    "enabled": true,
+    "tool": "roundtable-critique",
+    "providers": [],
+    "min_providers": 2,
+    "focus": "",
+    "points": {
+      "plan_commit": true,
+      "deliver_merge": true
+    }
+  },
+  "panel": [
+    {
+      "provider": "antigravity",
+      "verdict": "ok",
+      "summary": "I will read and review the karta binder file /mnt/agent-storage/vader/src/karta/.karta/binders/baseline-burndown.json to inspect the planned work items and search for any flaws, risks, or weaknesses."
+    },
+    {
+      "provider": "codex",
+      "verdict": null,
+      "summary": ""
+    },
+    {
+      "provider": "fireworks-deepseek",
+      "verdict": null,
+      "summary": "Request timed out after 181s."
+    },
+    {
+      "provider": "fireworks-glm5p2",
+      "verdict": null,
+      "summary": "Request timed out after 181s."
+    },
+    {
+      "provider": "fireworks-kimi",
+      "verdict": "ok",
+      "summary": "**Adversarial review of `baseline-burndown.json`**\n\n1. **High \u2014 `serve-status-escape`**: The contract says to `html.escape()` strings in both the `/` HTML page and `/state.json`. Applying the default `html.escape()` (which escapes `\"` to `&quot;`) to JSON string values produces valid JSON that is semantically wrong for any JSON client. *Fix:* Use `html.escape(..., quote=True)` for the HTML page and a JSON-safe transform for JSON values, and document the two paths.\n2. **High \u2014 `inject-inert-delimiter`**: Wrapping repo-derived text in a delimiter is not robust unless the delimiter itself cannot be broken by the data. A poisoned binder string containing the closing marker or triple backticks can escape the wrapper while still satisfying the probe's `_is_delimited` check. *Fix:* Choose one delimiter and escape its closing marker inside the payload, or use a nonce-delimited/length-prefixed format; add a self-test that injects the closing marker and asserts it stays inert.\n3. **High \u2014 `doc-count-truth`**: The oracle only checks that the known finding IDs disappear and no new lane-B violations appear. It does NOT verify the trust-critical requirement that README and marketplace.json NAME all four agents including karta-doc-gardner and karta-kaizen. *Fix:* Add a dedicated assertion that both files contain those two writer-agent names.\n4. **Medium \u2014 `mirror-sync-integrity`**: Changes computedHash from unknown installer hash to local content hash without documenting the new semantics or exact hash scope. *Fix:* Document computedHash = SHA-256 of the external SKILL.md after local sync; make the recompute cover exactly that scope.\n5. **Medium \u2014 `mirror-sync-integrity`**: No explicit halt-if-baseline-mismatch step before committing the updated lock. *Fix:* After recomputing, run validate_plugin and sync --check on unmodified externals; only commit the lock if both pass.\n6. **Medium \u2014 items 1/5/6**: All read or write the same tooling (sync_codex_skills.py, check_shared_copies.py, validate_plugin.py) and the same mirrored directories with no depends_on or shared_resources relationship. A parallel executor could run them concurrently and corrupt mirrors or run half-edited scripts. *Fix:* Add shared_resources declarations or depends_on edges.\n7. **Medium \u2014 mirror-sync-integrity**: The probe's own --self-test will turn permanently red after the fix. *Fix:* Follow-up to update the probe self-test fixtures post-fix.\n8. **Low \u2014 promote-htmx8**: Oracle uses absolute consumer paths; unreproducible elsewhere. *Fix:* env var.\n9. **Low \u2014 promote-htmx8**: Oracle runs sync --check but not the write-mode regen. *Fix:* state regen as the item's work.\n10. **Low \u2014 promise-reconciliation**: bool is a subclass of int in Python; isinstance(x,(bool,int)) accepts enabled: 1. *Fix:* type(x) is bool, plus a self-test case where enabled: 1 fails.\n11. **Low \u2014 doc-count-truth/promise-reconciliation**: exact retired-entry format unspecified. *Fix:* example in contract; verify metrics.retired_ledger >= 1.\n12. **Low \u2014 overall**: env_contract only runs validate_plugin --self-test. *Fix:* document that the real gates are per-item oracles.\n\n<SUMMARY>Key risks: JSON corruption via default html.escape; breakable delimiter; missing writer-agent name assertion; computedHash semantics undocumented; items 1/5/6 race on shared sync tooling; probe self-test left red; brittle absolute paths; bool/int check; retirement format; narrow env_contract.</SUMMARY>"
+    },
+    {
+      "provider": "fireworks-minimax",
+      "verdict": "ok",
+      "summary": "## Findings\n### Critical\n1. Wave-1 ordering for items 1, 5, 6 underspecified (shared sync_codex_skills.py): items 1 and 6 invoke the sync write-mode; item 5 rewrites that script; merge order changes which writer produced the mirrors that the new --check then validates. Fix: depends_on edges or pinned merge sequence.\n2. mirror-sync-integrity \"either A or B\" framing misleading \u2014 no local generator exists, so only re-baseline is feasible; drop or gate option B, declare the three mutated plannotator computedHash entries up front, define halt as FATAL + exit 2.\n3. parity-mirror-sync probe --self-test goes red post-fix, contradicting the design_facts doctrine that fixes lower counts without tripping gates; needs a doctrine fix or documented carve-out.\n4. promise-reconciliation consumer-repo kaizen one-liner not pinned \u2014 agent will invent it; pin the command text in the contract.\n5. Re-baseline + tamper-detection atomicity unordered \u2014 a commit landing recompute without re-baseline false-positives; landing re-baseline alone is briefly tamper-blind. Fix: one commit does both.\n### High\n6. inject-inert-delimiter does not pin a delimiter shape; MAX budget overflow behavior undefined. Fix: pin the probe-recognized delimiter and define overflow behavior.\n7. serve-status-escape oracle does not run serve_status.py --self-test. Fix: prepend it.\n8. doc-count-truth regression guard covers only lane B; new lane-C/D/G violations undetected. Fix: assert the exact post-fix findings set.\n9. promote-htmx8 3500-byte warning has no escalation story. Fix: assert validate_packs exit 0 explicitly.\n10. Trust-critical writer-agent disclosure not oracle-checked. Fix: textual assertion for karta-doc-gardner and karta-kaizen in README and marketplace.json.\n### Medium\n11. P1 exec-bit projection not self-test-asserted. 12. P2 missing-entry (whole key absent) case undefined vs degraded-key. 13. validate_plugin behavior on missing schema file undefended. 14. deferred version bump untracked. 15. --check semantics for degraded entries after the fix unpinned.\n### Low\n16. delimiter attribute ambiguity \u2014 match the probe's recognizer exactly. 17. hardcoded consumer paths. 18. cwd assumption for sync in oracle.\n<SUMMARY>Five criticals: 1/5/6 merge-order race on the sync tool; option B infeasible \u2014 pin re-baseline + halt semantics; probe self-test red post-fix contradicts doctrine; kaizen one-liner unpinned; re-baseline/tamper-detection atomicity. Plus delimiter shape/budget, serve_status self-test, lane C/D/G regression guard, byte-cap escalation, writer-name assertion.</SUMMARY>"
+    },
+    {
+      "provider": "fireworks-qwen",
+      "verdict": "ok",
+      "summary": "<SUMMARY>Key findings: (1) oracles miss critical contract requirements \u2014 item 3 does not check all four agents are named, item 4 does not verify the concrete one-liner exists, item 1 does not test benign content rendering; (2) item 5 computedHash re-baseline is a breaking semantic change with no compat plan; (3) item 6 deferred version bump creates a consumer notification gap; (4) item 4 hand-rolled schema validation fragile without jsonschema; (5) item 5 never-destructive policy could leave stale files on legitimate removal; (6) fixed-oracle doctrine means probe bugs silently corrupt all verification.</SUMMARY>\nFinding 1 (critical): item 3 oracle does not verify trust-critical agent disclosure \u2014 add an assertion that README.md and marketplace.json name karta-doc-gardner and karta-kaizen.\nFinding 2 (high): item 4 oracle does not verify the replacement one-liner exists in kaizen.md.\nFinding 3 (high): computedHash semantic change needs a migration note; external consumers of the old semantics break silently.\nFinding 4 (medium): deferred version bump means shipped pack changes invisibly for version-pinned consumers; record prominently.\nFinding 5 (medium): hand-rolled schema validation is error-prone (additionalProperties: false especially); add extensive self-test edge cases and document limitations.\nFinding 6 (medium): never-destructive P2 could leave stale files when a skill is legitimately removed; self-test all three cases (degraded entry keeps files; removed entry + removed skill cleans; degraded entry with deliberately removed skill).\nFinding 7 (low): benign-content byte-identity not oracle-verified; add a serve_status self-test case.\nFinding 8 (low): probes are a single point of failure; a meta-probe (bench-self-integrity) would catch probe bugs \u2014 currently unbuilt."
+    }
+  ]
+}
