@@ -18,12 +18,19 @@ Usage:
   python3 benchmarks/gate/run_gate.py --date 2026-07-17    # pin the results filename
   python3 benchmarks/gate/run_gate.py --only sme-pack-static-suite,parity-mirror-sync-integrity
   python3 benchmarks/gate/run_gate.py --strict             # SKIPPED > 0 also fails
+  python3 benchmarks/gate/run_gate.py --consumers ../parchmark,../gringotts
+
+Consumer-aware probes otherwise guess the consumer repos as siblings of this
+checkout's parent, which is wrong whenever karta is checked out in a worktree —
+three probes then fail closed on repos that exist but were looked for in the
+wrong place. Pass --consumers (or export KARTA_BENCH_CONSUMERS) to say where
+they actually are; the runner forwards it to every probe through the environment.
 
 Exit: 1 if any probe FAILed or ERRORed (plus, under --strict, if anything was
 SKIPPED), else 0.
 """
 from __future__ import annotations
-import argparse, datetime, json, subprocess, sys
+import argparse, datetime, json, os, subprocess, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -31,6 +38,12 @@ SPEC = ROOT / "benchmarks" / "bench-spec.json"
 PROBES = ROOT / "benchmarks" / "probes"
 RESULTS = ROOT / "benchmarks" / "results" / "gate"
 PROBE_TIMEOUT_S = 120
+# Consumer-repo locations reach the probes through the environment rather than a
+# per-probe --consumers registry here: a registry would silently drift as probes
+# are added, and probes that ignore consumers ignore the variable harmlessly.
+# Consumer-aware probes read it as their --consumers default, so an explicit
+# --consumers on a hand-run probe still wins.
+CONSUMERS_ENV = "KARTA_BENCH_CONSUMERS"
 
 
 def _git_sha() -> str:
@@ -49,17 +62,20 @@ def _plugin_version() -> str:
         return "unknown"
 
 
-def _run_probe(vector_id: str) -> dict:
+def _run_probe(vector_id: str, consumers: str | None = None) -> dict:
     """Run one probe and reduce it to a result row. Never raises."""
     probe = PROBES / f"{vector_id}.py"
     if not probe.is_file():
         return {"id": vector_id, "status": "SKIPPED", "partial": None,
                 "implemented_checks": [], "findings_count": 0, "findings": [],
                 "metrics": {}, "detail": "no probe yet"}
+    env = dict(os.environ)
+    if consumers:
+        env[CONSUMERS_ENV] = consumers
     try:
         proc = subprocess.run([sys.executable, str(probe), "--target", str(ROOT)],
                               capture_output=True, text=True, timeout=PROBE_TIMEOUT_S,
-                              cwd=str(ROOT))
+                              cwd=str(ROOT), env=env)
     except subprocess.TimeoutExpired:
         return _error_row(vector_id, f"probe timed out after {PROBE_TIMEOUT_S}s")
     except OSError as e:
@@ -121,6 +137,11 @@ def main() -> int:
                     help="run only these comma-separated vector ids")
     ap.add_argument("--strict", action="store_true",
                     help="also exit 1 when any vector is SKIPPED (full-coverage mode)")
+    ap.add_argument("--consumers", default=os.environ.get(CONSUMERS_ENV) or None,
+                    metavar="PATH,PATH",
+                    help="enrolled consumer repo paths for consumer-aware probes "
+                         "(default: each probe's sibling-directory guess, which is "
+                         "wrong whenever this checkout is a worktree)")
     args = ap.parse_args()
 
     spec = json.loads(SPEC.read_text())
@@ -132,7 +153,7 @@ def main() -> int:
             ap.error(f"unknown vector id(s): {', '.join(unknown)}")
         vector_ids = [vid for vid in vector_ids if vid in set(wanted)]
 
-    rows = [_run_probe(vid) for vid in vector_ids]
+    rows = [_run_probe(vid, args.consumers) for vid in vector_ids]
     summary = {"total": len(rows)}
     for status in ("PASS", "FAIL", "ERROR", "SKIPPED"):
         summary[status.lower()] = sum(1 for r in rows if r["status"] == status)

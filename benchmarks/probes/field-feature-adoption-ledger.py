@@ -25,10 +25,14 @@ Usage:
 exits 0 only when the summary is N/N checks passed, nonzero otherwise.
 """
 from __future__ import annotations
-import argparse, json, subprocess, sys
+import argparse, json, os, subprocess, sys
 from pathlib import Path
 
 PROBE_ID = "field-feature-adoption-ledger"
+# Set by run_gate --consumers so probe correctness never depends on where the
+# karta checkout happens to sit (a worktree has no consumer siblings). An
+# explicit --consumers always wins over the environment.
+CONSUMERS_ENV = "KARTA_BENCH_CONSUMERS"
 AUDIT_REL = Path("benchmarks") / "field" / "audit_adoption.py"
 AUDIT_TIMEOUT_S = 100
 IMPLEMENTED_CHECKS = [
@@ -76,12 +80,14 @@ def build_payload(audit_rc: int, tables: list[dict], detail: str) -> dict:
             "metrics": metrics}
 
 
-def run_live(target: Path) -> dict:
+def run_live(target: Path, consumers: str | None = None) -> dict:
     audit = target / AUDIT_REL
+    cmd = [sys.executable, str(audit), "--target", str(target)]
+    if consumers:
+        cmd += ["--consumers", consumers]
     try:
-        proc = subprocess.run([sys.executable, str(audit), "--target", str(target)],
-                              capture_output=True, text=True, timeout=AUDIT_TIMEOUT_S,
-                              cwd=str(target))
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=AUDIT_TIMEOUT_S, cwd=str(target))
     except (OSError, subprocess.TimeoutExpired) as e:
         return build_payload(1, [], f"{audit} did not complete ({e})")
     tail = "; ".join((proc.stdout + proc.stderr).strip().splitlines()[-3:])
@@ -152,12 +158,17 @@ def main() -> int:
     ap.add_argument("--target", type=Path,
                     default=Path(__file__).resolve().parent.parent.parent,
                     help="karta repo root (default: this probe's repo)")
+    ap.add_argument("--consumers", default=os.environ.get(CONSUMERS_ENV) or None,
+                    metavar="PATH,PATH",
+                    help=f"enrolled consumer repos, forwarded to audit_adoption.py "
+                         f"(default: ${CONSUMERS_ENV} if set, else sibling "
+                         "parchmark and gringotts)")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     target = args.target.resolve()
     if args.self_test:
         return self_test(target)
-    print(json.dumps(run_live(target), indent=2))
+    print(json.dumps(run_live(target, args.consumers), indent=2))
     return 0
 
 

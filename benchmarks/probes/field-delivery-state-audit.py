@@ -35,7 +35,7 @@ probe itself crashed). Stdlib only; every path derives from --target.
   field-delivery-state-audit.py --self-test                # embedded, [PASS]/[FAIL] N/N
 """
 from __future__ import annotations
-import argparse, datetime, json, sys
+import argparse, datetime, json, os, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "flow"))
@@ -46,6 +46,10 @@ IMPLEMENTED_CHECKS = ["lint_delivery_refs", "audit_hygiene", "check_markers",
                       "audit_binder_mutations", "fixture-detection-matrix",
                       "doctrine-anchor-grep"]
 RESULTS_DIR = Path("benchmarks") / "flow" / "results"
+# Set by run_gate --consumers so probe correctness never depends on where the
+# karta checkout happens to sit (a worktree has no consumer siblings). An
+# explicit --consumers always wins over the environment.
+CONSUMERS_ENV = "KARTA_BENCH_CONSUMERS"
 
 
 def _default_consumers(target: Path) -> list[tuple[str, Path]]:
@@ -198,8 +202,9 @@ def main() -> int:
                     help="karta repo root (run_gate passes this)")
     ap.add_argument("--fixture-only", action="store_true",
                     help="run the detection matrix against the fixture, skip the live sweep")
-    ap.add_argument("--consumers", default=None,
-                    help="comma-separated repo paths for the live sweep")
+    ap.add_argument("--consumers", default=os.environ.get(CONSUMERS_ENV) or None,
+                    help=f"comma-separated repo paths for the live sweep "
+                         f"(default: ${CONSUMERS_ENV} if set, else siblings)")
     ap.add_argument("--write-snapshots", action="store_true",
                     help="write committed per-repo snapshots under benchmarks/flow/results/")
     ap.add_argument("--audit-timestamp", default=None,

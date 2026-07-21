@@ -43,7 +43,7 @@ defaulting to the consumers.json names resolved as sibling directories of the
 --target repo's parent.
 """
 from __future__ import annotations
-import argparse, datetime, json, re, subprocess, sys
+import argparse, datetime, json, os, re, subprocess, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "sme-static"))
@@ -52,6 +52,10 @@ import match_pins
 import seed_drift
 
 PROBE_ID = "sme-pack-static-suite"
+# Set by run_gate --consumers so probe correctness never depends on where the
+# karta checkout happens to sit (a worktree has no consumer siblings). An
+# explicit --consumers always wins over the environment.
+CONSUMERS_ENV = "KARTA_BENCH_CONSUMERS"
 VALIDATOR = Path("skills") / "karta-kaizen" / "scripts" / "validate_packs.py"
 SHARED_COPIES = Path("scripts") / "check_shared_copies.py"
 RESULTS_DIR = Path("benchmarks") / "sme" / "results"
@@ -474,9 +478,11 @@ def main() -> int:
     ap.add_argument("--target", type=Path,
                     default=Path(__file__).resolve().parent.parent.parent,
                     help="karta repo root (default: this probe's repo)")
-    ap.add_argument("--consumers", default=None, metavar="PATH,PATH",
-                    help="consumer repo roots (default: consumers.json names as "
-                         "sibling directories of the --target repo's parent)")
+    ap.add_argument("--consumers", default=os.environ.get(CONSUMERS_ENV) or None,
+                    metavar="PATH,PATH",
+                    help=f"consumer repo roots (default: ${CONSUMERS_ENV} if set, else "
+                         "consumers.json names as sibling directories of the "
+                         "--target repo's parent)")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     if args.self_test:

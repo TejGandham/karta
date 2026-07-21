@@ -29,13 +29,17 @@ Usage:
   python3 benchmarks/probes/field-companion-loop-health.py --self-test
 """
 from __future__ import annotations
-import argparse, datetime, json, subprocess, sys
+import argparse, datetime, json, os, subprocess, sys
 from pathlib import Path
 
 PROBE_ID = "field-companion-loop-health"
 RUNNER = Path("benchmarks") / "field" / "audit_companions.py"
 RESULTS_DIR = Path("benchmarks") / "field" / "results"
 DEFAULT_CONSUMERS = ("parchmark", "gringotts")
+# Set by run_gate --consumers so probe correctness never depends on where the
+# karta checkout happens to sit (a worktree has no consumer siblings). An
+# explicit --consumers always wins over the environment.
+CONSUMERS_ENV = "KARTA_BENCH_CONSUMERS"
 RUNNER_TIMEOUT_S = 50
 ROW_KEYS = ("repo", "head", "caveat", "deliveries", "epochs", "gardner",
             "kaizen", "config_staleness", "findings")
@@ -270,9 +274,10 @@ def main() -> int:
     ap.add_argument("--target", type=Path,
                     default=Path(__file__).resolve().parent.parent.parent,
                     help="karta repo root (default: this probe's repo)")
-    ap.add_argument("--consumers", default=None, metavar="PATH,PATH",
-                    help="enrolled consumer repos (default: sibling "
-                         "directories parchmark and gringotts)")
+    ap.add_argument("--consumers", default=os.environ.get(CONSUMERS_ENV) or None,
+                    metavar="PATH,PATH",
+                    help=f"enrolled consumer repos (default: ${CONSUMERS_ENV} if set, "
+                         "else sibling directories parchmark and gringotts)")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     if args.self_test:
