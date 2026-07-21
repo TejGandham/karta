@@ -230,7 +230,7 @@
     "status": "bypass",
     "guard": null,
     "computed_state": "bypassed",
-    "note": "doctrine only \u2014 Codex registers no plugin hooks (docs/how-to/hooks.md runtime column)"
+    "note": "bundled Codex twin ships in 2.24.0 (raw apply_patch parsing) but Codex trust-gates every bundled hook per definition \u2014 until the user reviews and trusts it, doctrine plus sandbox only"
    },
    {
     "id": "binder-write:terminal",
@@ -293,7 +293,7 @@
     "status": "bypass",
     "guard": null,
     "computed_state": "bypassed",
-    "note": "doctrine plus OS sandbox only \u2014 no Codex hooks surface yet"
+    "note": "bundled Codex twin ships in 2.24.0 but is trust-gated per hook definition \u2014 until reviewed and trusted, doctrine plus OS sandbox only"
    },
    {
     "id": "pack-write:terminal",
@@ -398,10 +398,10 @@
     "id": "kaizen-write:bash",
     "mutation_class": "kaizen-write",
     "channel": "bash",
-    "status": "bypass",
-    "guard": null,
-    "computed_state": "bypassed",
-    "note": "a kaizen Bash write escapes the file-tool matchers, same as every write guard"
+    "status": "enforced",
+    "guard": "guard_writer_confinement.py",
+    "computed_state": "enforced",
+    "note": "Bash matcher statically parses write/delete targets for confined writers; clear out-of-surface targets and ambiguous commands are blocked (2.24.0)"
    },
    {
     "id": "kaizen-write:task",
@@ -419,7 +419,7 @@
     "status": "bypass",
     "guard": null,
     "computed_state": "bypassed",
-    "note": "deliberate phase split: doctrine plus OS sandbox only on Codex (docs/how-to/hooks.md)"
+    "note": "doctrine on Codex: karta registers no kaizen/doc-gardner agent there, so no writer exists for a confinement hook to recognize (docs/how-to/codex.md)"
    },
    {
     "id": "kaizen-write:terminal",
@@ -429,6 +429,78 @@
     "guard": null,
     "computed_state": "n-a",
     "note": "kaizen is an agent construct \u2014 there is no terminal kaizen writer"
+   },
+   {
+    "id": "docgardner-write:write",
+    "mutation_class": "docgardner-write",
+    "channel": "write",
+    "status": "enforced",
+    "guard": "guard_writer_confinement.py",
+    "computed_state": "enforced",
+    "note": "doc-gardner writer confined to the prose-doc surface (README, docs/, AGENTS.md, ARCHITECTURE, .gitignore) \u2014 2.24.0 table row"
+   },
+   {
+    "id": "docgardner-write:edit",
+    "mutation_class": "docgardner-write",
+    "channel": "edit",
+    "status": "enforced",
+    "guard": "guard_writer_confinement.py",
+    "computed_state": "enforced",
+    "note": "same surface as docgardner-write:write"
+   },
+   {
+    "id": "docgardner-write:notebookedit",
+    "mutation_class": "docgardner-write",
+    "channel": "notebookedit",
+    "status": "enforced",
+    "guard": "guard_writer_confinement.py",
+    "computed_state": "enforced",
+    "note": "same surface as docgardner-write:write"
+   },
+   {
+    "id": "docgardner-write:bash",
+    "mutation_class": "docgardner-write",
+    "channel": "bash",
+    "status": "enforced",
+    "guard": "guard_writer_confinement.py",
+    "computed_state": "enforced",
+    "note": "static Bash write/delete parsing, same mechanism as kaizen-write:bash (2.24.0)"
+   },
+   {
+    "id": "docgardner-write:task",
+    "mutation_class": "docgardner-write",
+    "channel": "task",
+    "status": "n/a",
+    "guard": null,
+    "computed_state": "n-a",
+    "note": "doc-gardner's own writes surface as file-tool calls carrying its agent_type"
+   },
+   {
+    "id": "docgardner-write:codex",
+    "mutation_class": "docgardner-write",
+    "channel": "codex",
+    "status": "waived:codex-no-registered-writer",
+    "guard": null,
+    "computed_state": "waived",
+    "note": "doctrine on Codex: no registered doc-gardner agent exists there for a hook to recognize"
+   },
+   {
+    "id": "docgardner-write:terminal",
+    "mutation_class": "docgardner-write",
+    "channel": "terminal",
+    "status": "n/a",
+    "guard": null,
+    "computed_state": "n-a",
+    "note": "doc-gardner is an agent construct \u2014 there is no terminal doc-gardner writer"
+   },
+   {
+    "id": "item-whiff:task",
+    "mutation_class": "item-whiff",
+    "channel": "task",
+    "status": "waived:advisory-by-design",
+    "guard": "guard_subagent_whiff.py",
+    "computed_state": "waived",
+    "note": "advisory, not a wall: a karta-typed SubagentStop over stranded produced-nothing items is turned back once to name them; generic wave workers are indistinguishable at stop, so full enforcement is impossible by identity \u2014 deliberate scope (2.24.0)"
    },
    {
     "id": "ref-forge:write",
@@ -608,7 +680,7 @@
     "status": "bypass",
     "guard": null,
     "computed_state": "bypassed",
-    "note": "no Codex Stop surface upstream"
+    "note": "Codex ships a Stop surface and the 2.24.0 bundle carries a Stop-gate twin, trust-gated per hook \u2014 until reviewed and trusted, doctrine only"
    },
    {
     "id": "integration-merge:terminal",
@@ -628,7 +700,6 @@
    "pack-write:bash",
    "pack-write:codex",
    "pack-write:terminal",
-   "kaizen-write:bash",
    "kaizen-write:codex",
    "ref-forge:bash",
    "ref-forge:codex",
@@ -664,7 +735,7 @@
   {
    "finding_id": "bypass:binder-write:codex",
    "severity": "known-gap",
-   "summary": "unwaivered bypass binder-write:codex: doctrine only \u2014 Codex registers no plugin hooks (docs/how-to/hooks.md runtime column)"
+   "summary": "unwaivered bypass binder-write:codex: bundled Codex twin ships in 2.24.0 (raw apply_patch parsing) but Codex trust-gates every bundled hook per definition \u2014 until the user reviews and trusts it, doctrine plus sandbox only"
   },
   {
    "finding_id": "bypass:binder-write:terminal",
@@ -684,7 +755,7 @@
   {
    "finding_id": "bypass:pack-write:codex",
    "severity": "known-gap",
-   "summary": "unwaivered bypass pack-write:codex: doctrine plus OS sandbox only \u2014 no Codex hooks surface yet"
+   "summary": "unwaivered bypass pack-write:codex: bundled Codex twin ships in 2.24.0 but is trust-gated per hook definition \u2014 until reviewed and trusted, doctrine plus OS sandbox only"
   },
   {
    "finding_id": "bypass:pack-write:terminal",
@@ -692,14 +763,9 @@
    "summary": "unwaivered bypass pack-write:terminal: plain-terminal pack edits run zero guards"
   },
   {
-   "finding_id": "bypass:kaizen-write:bash",
-   "severity": "known-gap",
-   "summary": "unwaivered bypass kaizen-write:bash: a kaizen Bash write escapes the file-tool matchers, same as every write guard"
-  },
-  {
    "finding_id": "bypass:kaizen-write:codex",
    "severity": "known-gap",
-   "summary": "unwaivered bypass kaizen-write:codex: deliberate phase split: doctrine plus OS sandbox only on Codex (docs/how-to/hooks.md)"
+   "summary": "unwaivered bypass kaizen-write:codex: doctrine on Codex: karta registers no kaizen/doc-gardner agent there, so no writer exists for a confinement hook to recognize (docs/how-to/codex.md)"
   },
   {
    "finding_id": "bypass:ref-forge:bash",
@@ -734,7 +800,7 @@
   {
    "finding_id": "bypass:integration-merge:codex",
    "severity": "known-gap",
-   "summary": "unwaivered bypass integration-merge:codex: no Codex Stop surface upstream"
+   "summary": "unwaivered bypass integration-merge:codex: Codex ships a Stop surface and the 2.24.0 bundle carries a Stop-gate twin, trust-gated per hook \u2014 until reviewed and trusted, doctrine only"
   },
   {
    "finding_id": "bypass:integration-merge:terminal",
@@ -743,7 +809,7 @@
   }
  ],
  "metrics": {
-  "unwaivered_bypass_count": 17,
+  "unwaivered_bypass_count": 16,
   "enforced_to_bypassed_flips": 0,
   "family_a_mismatch_count": 0,
   "manifest_version": 1,

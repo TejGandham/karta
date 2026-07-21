@@ -247,6 +247,24 @@
       "lag_label": null,
       "present_now": null,
       "days_since_last_activity": 15
+    },
+    {
+      "id": "pack-rule-htmx8",
+      "karta_version": "2.23.0",
+      "ship_date": "2026-07-21T15:58:11-04:00",
+      "durable": true,
+      "detection": {
+        "kind": "grep",
+        "pattern": "htmx.8",
+        "path": ".karta"
+      },
+      "status": "NOT-EXERCISED-SINCE-SHIP",
+      "first_use": null,
+      "carried_forward": false,
+      "adoption_lag_days": null,
+      "lag_label": null,
+      "present_now": null,
+      "days_since_last_activity": 15
     }
   ],
   "headline": {
@@ -256,7 +274,7 @@
       "sme-override-markers"
     ],
     "count": 3,
-    "denominator": 12
+    "denominator": 13
   },
   "adoption_lag_n": 2,
   "adoption_lag_median_days": null

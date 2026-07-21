@@ -3,7 +3,7 @@
   "vector": "field-feature-adoption-ledger",
   "audit_date": "2026-07-21",
   "repo": "gringotts",
-  "repo_head": "20966852788a8d271f7cffc1c14e85da2eaa5002",
+  "repo_head": "b8fc464cc326c026747684ee85efdf644197e9a7",
   "activity": {
     "events_total": 13,
     "classes": {
@@ -245,8 +245,29 @@
         "commit": "f9043a5a00a079df3e1f3bd9767c1df3629df278",
         "date": "2026-07-15T11:07:41-04:00"
       },
-      "carried_forward": false,
+      "carried_forward": true,
       "adoption_lag_days": -6,
+      "lag_label": "pre-release-dogfood",
+      "present_now": null,
+      "days_since_last_activity": null
+    },
+    {
+      "id": "pack-rule-htmx8",
+      "karta_version": "2.23.0",
+      "ship_date": "2026-07-21T15:58:11-04:00",
+      "durable": true,
+      "detection": {
+        "kind": "grep",
+        "pattern": "htmx.8",
+        "path": ".karta"
+      },
+      "status": "ADOPTED",
+      "first_use": {
+        "commit": "dd80e01b1f5fc08728bba400f6f692fcce9f52d7",
+        "date": "2026-07-16T23:09:45-04:00"
+      },
+      "carried_forward": true,
+      "adoption_lag_days": -5,
       "lag_label": "pre-release-dogfood",
       "present_now": null,
       "days_since_last_activity": null
@@ -260,7 +281,7 @@
       "sme-override-markers"
     ],
     "count": 4,
-    "denominator": 12
+    "denominator": 13
   },
   "adoption_lag_n": 5,
   "adoption_lag_median_days": 8

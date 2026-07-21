@@ -52,7 +52,7 @@ VECTOR = "flow-guard-enforcement-matrix"
 RESULTS_DIR = Path("benchmarks") / "flow" / "results"
 FIXTURE_DIR = Path("benchmarks") / "fixtures" / "hooked-repo"
 GUARD_TIMEOUT_S = 30
-HOOK_CHANNELS = {"write", "edit", "notebookedit", "task"}
+HOOK_CHANNELS = {"write", "edit", "notebookedit", "task", "bash"}
 IMPLEMENTED_CHECKS = ["family-a-guard-payload-matrix",
                       "family-b-mutation-surface-cross-check"]
 
@@ -137,7 +137,8 @@ SEEDED_FINDINGS = (
     "bypass:binder-write:bash",
     "bypass:pack-write:bash",
     "bypass:pack-write:notebookedit",
-    "bypass:kaizen-write:bash",
+    # bypass:kaizen-write:bash healed 2.24.0 — the Bash matcher on
+    # guard_writer_confinement.py closed it; the row is now 'enforced'.
     "bypass:ref-forge:bash",
     "bypass:integration-merge:bash",
 )

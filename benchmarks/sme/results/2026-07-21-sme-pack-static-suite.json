@@ -2,11 +2,11 @@
   "schema_version": 1,
   "vector": "sme-pack-static-suite",
   "run_date": "2026-07-21",
-  "plugin_version": "2.23.0",
-  "karta_sha": "c63a4b078c94992627d532df707af308287ee723",
+  "plugin_version": "2.24.0",
+  "karta_sha": "30344a83ca4257ee9a085141ab2d70b2772808ae",
   "consumer_shas": {
     "parchmark": "0aefe0656f0ebc6d893e4ae643de4f934f76380f",
-    "gringotts": "20966852788a8d271f7cffc1c14e85da2eaa5002"
+    "gringotts": "b8fc464cc326c026747684ee85efdf644197e9a7"
   },
   "pack_list": {
     "builtin": [
@@ -344,6 +344,27 @@
       "missing_pins": []
     },
     {
+      "binder": "gringotts/upload-integrity",
+      "era": "v1.17.0",
+      "pinned": [
+        "go-htmx",
+        "go-naming",
+        "minimalism"
+      ],
+      "expected_contract": [
+        "go-htmx",
+        "go-naming",
+        "minimalism"
+      ],
+      "expected_coverage": [
+        "go-htmx",
+        "go-naming",
+        "minimalism"
+      ],
+      "underivable_pins": [],
+      "missing_pins": []
+    },
+    {
       "binder": "gringotts/browse-refinements",
       "era": "v1.17.0",
       "pinned": [
@@ -451,7 +472,7 @@
   ],
   "binder_era_counts": {
     "v1.1.0": 11,
-    "v1.17.0": 5
+    "v1.17.0": 6
   },
   "smeless_excluded": [
     "parchmark/note-create-workflow",

@@ -275,9 +275,11 @@
       ]
     },
     "scripted-reachability-check-exists": {
-      "exists": false,
-      "good": false,
-      "hits": []
+      "exists": true,
+      "good": true,
+      "hits": [
+        "hooks/scripts/guard_subagent_whiff.py"
+      ]
     }
   },
   "findings": [

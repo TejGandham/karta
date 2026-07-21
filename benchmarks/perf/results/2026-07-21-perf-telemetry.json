@@ -8,7 +8,7 @@
     "since": "2026-06-21",
     "dirs_present": 3,
     "dirs_absent": 0,
-    "sessions_scanned": 36,
+    "sessions_scanned": 38,
     "deliveries_measurable": 15,
     "unmeasurable_or_skipped": 0,
     "entries": [
@@ -20,7 +20,7 @@
         "context": {
           "project": "karta",
           "binder_slug": "baseline-burndown,bench-probe-buildout,codex-119-compatibility,cross-item-consistency,delivery-stop-gate,kaizen-frame,roundtable-edict,shared-terms-pending,writer-confinement",
-          "plugin_version": "2.23.0",
+          "plugin_version": "2.24.0",
           "item_count": 49,
           "estimate_mix": {
             "M": 24,
@@ -77,7 +77,7 @@
           ],
           "unmeasurable_sessions": 0
         },
-        "sessions_scanned": 14,
+        "sessions_scanned": 15,
         "deliveries_measurable": 7,
         "unmeasurable_sessions": 0,
         "sessions_errored": 0,
@@ -161,13 +161,13 @@
         "project": "gringotts",
         "context": {
           "project": "gringotts",
-          "binder_slug": "browse-refinements,debt-sweep,exif-display,exif-persistence,upload-reliability",
+          "binder_slug": "upload-integrity,browse-refinements,debt-sweep,exif-display,exif-persistence,upload-reliability",
           "plugin_version": "unknown",
-          "item_count": 14,
+          "item_count": 19,
           "estimate_mix": {
-            "L": 4,
-            "M": 6,
-            "S": 4
+            "S": 6,
+            "M": 9,
+            "L": 4
           },
           "models_per_agent_type": {},
           "claude_code_version": "2.1.200"
@@ -219,7 +219,7 @@
           ],
           "unmeasurable_sessions": 0
         },
-        "sessions_scanned": 18,
+        "sessions_scanned": 19,
         "deliveries_measurable": 3,
         "unmeasurable_sessions": 0,
         "sessions_errored": 0,

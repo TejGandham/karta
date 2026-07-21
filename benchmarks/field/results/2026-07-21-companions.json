@@ -477,7 +477,7 @@
   },
   {
    "repo": "gringotts",
-   "head": "20966852788a8d271f7cffc1c14e85da2eaa5002",
+   "head": "b8fc464cc326c026747684ee85efdf644197e9a7",
    "caveat": "deliveries carry no plugin-version stamp, so this is loop health over calendar time, not a controlled version A/B",
    "deliveries": [
     {
