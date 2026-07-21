@@ -180,26 +180,36 @@ def _check_codex(errors: list[str], skill_names: set[str]) -> None:
     # unmanaged orphans. Cross-runtime skills with complete skills-lock.json
     # entries share .agents/skills but are excluded from the karta plugin.
     want, names = sync_codex_skills.expected()
-    for p, content in sorted(want.items()):
+    for p, (content, exec_bits) in sorted(want.items()):
         if not p.exists():
             errors.append(f"{p.relative_to(ROOT)}: missing from .agents/skills mirror (run sync_codex_skills.py)")
         elif p.read_bytes() != content:
             errors.append(f"{p.relative_to(ROOT)}: differs from canonical skill (run sync_codex_skills.py)")
+        elif (p.stat().st_mode & 0o111) != exec_bits:
+            errors.append(f"{p.relative_to(ROOT)}: executable bit differs from canonical skill (run sync_codex_skills.py)")
     for p in sorted(set(sync_codex_skills.mirror_files()) - set(want)):
         errors.append(f"{p.relative_to(ROOT)}: orphaned in mirror (no canonical source)")
     for name in sorted(sync_codex_skills.mirror_skill_names() - names):
         errors.append(f".agents/skills/{name}: orphaned (no skills/{name})")
     install_want = sync_codex_skills.expected_install_projection()
     install_have = set(sync_codex_skills.install_projection_files())
-    for p, content in sorted(install_want.items()):
+    for p, (content, exec_bits) in sorted(install_want.items()):
         if not p.exists():
             errors.append(f"{p.relative_to(ROOT)}: missing from Codex install projection (run sync_codex_skills.py)")
         elif p.read_bytes() != content:
             errors.append(f"{p.relative_to(ROOT)}: differs from canonical Codex install projection (run sync_codex_skills.py)")
+        elif (p.stat().st_mode & 0o111) != exec_bits:
+            errors.append(f"{p.relative_to(ROOT)}: executable bit differs from canonical Codex install projection (run sync_codex_skills.py)")
     for p in sorted(install_have - set(install_want)):
         errors.append(f"{p.relative_to(ROOT)}: orphaned in Codex install projection (no canonical source)")
     for name in sorted(sync_codex_skills.install_projection_skill_names() - names):
         errors.append(f"plugins/karta/skills/{name}: orphaned (no skills/{name})")
+
+    # 3b. External skill hash liveness — recompute each external skill's SKILL.md
+    # content hash (computedHash = sha256 of the bytes as synced locally) against
+    # skills-lock.json; a mismatch, degraded entry, or missing lock entry fails,
+    # naming the skill. Shared with sync_codex_skills --check (one truth).
+    errors.extend(sync_codex_skills.external_integrity_problems())
 
     # 4. Codex agent projections — TOML + bundled instructions match agents/*.md.
     for p, content in sorted(sync_codex_agents.projections().items()):
