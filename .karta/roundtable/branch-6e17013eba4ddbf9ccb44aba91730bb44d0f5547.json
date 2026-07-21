@@ -1,0 +1,50 @@
+{
+  "reviewed_hash": "6e17013eba4ddbf9ccb44aba91730bb44d0f5547",
+  "tool": "roundtable-critique",
+  "target_kind": "branch",
+  "target_ref": "karta/baseline-burndown/integration",
+  "run_at": "2026-07-21T18:22:53.120340+00:00",
+  "config_snapshot": {
+    "enabled": true,
+    "tool": "roundtable-critique",
+    "providers": [],
+    "min_providers": 2,
+    "focus": "",
+    "points": {
+      "plan_commit": true,
+      "deliver_merge": true
+    }
+  },
+  "panel": [
+    {
+      "provider": "fireworks-qwen",
+      "verdict": "ok",
+      "summary": "MERGE-BLOCKING: (1) HIGH \u2014 sync_codex_skills.py orphan cleanup race (~414-422): write mode iterates have - set(want) computed before rmtree of orphan dirs; the p.exists() guard prevents crashes but a file inside an orphan dir also listed standalone is silently skipped from the 'removed' audit message. Not a correctness bug (the file IS gone); audit trail incomplete; low risk since orphan dirs and orphan files are disjoint in practice. (2) MEDIUM \u2014 _inert_json double-escape concern examined and self-resolved: json.dumps does not escape / by default in Python, so the post-dumps replacements are correct and necessary. No actual bug here. (3) MEDIUM \u2014 _neutralize regex misses </karta-status followed by attributes like </karta-status foo>: in HTML that is not a valid closing tag so safe for HTML parsers; low risk given the delimiter is custom. POST-MERGE: (4) LOW \u2014 validate_plugin.py DG_SCHEMA path hardcoded; if the schema file moves, validator reports missing-or-unreadable (self-test covers the case). (5) LOW \u2014 htmx.8 rule duplicated across 10 projection files; maintainability debt acknowledged as deliberate (no version bump, owed at next release)."
+    },
+    {
+      "provider": "fireworks-minimax",
+      "verdict": "ok",
+      "summary": "Seven findings, none merge-blocking. MEDIUM #1 schema-bundle coupling: _check_doc_gardner reads skills/karta-doc-gardner/references/doc-gardner-schema.json; confirm the schema is in tree and projected (plugins/karta/...) before merge so the gate is wired end-to-end, else doc-gardner-enabled repos fall to PLUGIN INTEGRITY: FAIL. MEDIUM #2 migration hazard: external_integrity_problems() makes any skills-lock.json entry missing one of (source, sourceType, skillPath, computedHash) fail validate_plugin; remediation is running write-mode sync once; consider surfacing for first-time adopters. MEDIUM #3 rebaseline path masks legitimate re-sync: _rebaseline_lock() updates computedHash to the local sha on every write invocation, conflating upstream re-sync with tamper; suggest logging old-vs-new and a previousHash field for downstream audit. LOW-MED #4 BYTE_BUDGET=4096 duplicated between inject_karta_status.py and benchmarks/fixtures/adversarial/expected.json \u2014 two sources of truth for an oracle; hoist or read-then-assert. LOW #5 _inert_json self-test coverage: add a /-heavy payload, U+2028/U+2029, backslash-adjacent <, naked </script. LOW #6 _neutralize regex is substring-only: unicode-escaped or zero-width-space variants (<\\u002fkarta-status, <ZWSP/karta-status) bypass the neutralizer; renderer-side these do not reconstruct the closing fence, but a downstream pipeline that un-escapes before fence matching could be exposed; consider scanning the un-escaped form. LOW #7 claims ledger retired shape: add a parse-side assertion that retired implies no expect_* field on the same row. No critical or merge-blocking correctness bug found. The neutralized-text encoder, the delimited-hook injection, and the external-hash liveness are individually correct and cross-checked by self-tests that exercise the actual response bytes. Parity probes 3/3 PASS, sec sinks=0, escaped-render good. The diff is conservatively safe to land with the noted follow-ups."
+    },
+    {
+      "provider": "codex",
+      "verdict": null,
+      "summary": ""
+    },
+    {
+      "provider": "fireworks-deepseek",
+      "verdict": null,
+      "summary": "Request timed out after 181s (round 1)."
+    },
+    {
+      "provider": "fireworks-glm5p2",
+      "verdict": null,
+      "summary": "Request timed out after 181s (round 1)."
+    },
+    {
+      "provider": "fireworks-kimi",
+      "verdict": null,
+      "summary": "Round 1 timeout after 181s; round 2 retry rate-limited (HTTP 503)."
+    }
+  ]
+}
