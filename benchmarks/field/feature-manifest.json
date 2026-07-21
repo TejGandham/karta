@@ -2,7 +2,7 @@
   "schema_version": 1,
   "notes": [
     "One entry per shipped, consumer-repo-observable karta capability: {id, karta_version, ship_date, detection:{kind: grep|jq|ref, pattern, path}, durable} — or an explicit {version, observable: false} sentinel for a release that shipped no new repo-observable capability.",
-    "Coverage floor: every released version from 1.8.0 through 2.21.0 carries an entry or a sentinel, enumerated from the .claude-plugin/plugin.json version-transition commits (git log -G).",
+    "Coverage floor: every released version from 1.8.0 through 2.22.0 carries an entry or a sentinel, enumerated from the .claude-plugin/plugin.json version-transition commits (git log -G).",
     "Era capabilities that shipped before the 1.8.0 coverage floor (debt markers, the smoke oracle type, the accept/failure path, failed-ref presence) carry their true first released version (1.0.0) and that version-transition commit's committer date; attributing them to 1.8.0 would forge their ship dates. The plan-time seed expectations name these features, so they are entries, not omissions.",
     "ship_date = committer date of the plugin.json version-transition commit for that version. Declared deviation from card step 2: pre-1.13.0 bumps predate the chore(release) subject convention, so the transition commit — not a chore(release) grep — is the date source for every version.",
     "detection kinds: grep = tracked-content substring (first-use via git log -S<pattern> [-- path]); jq = key presence in the tracked JSON file at path (first-use via git log -S on the final key token, scoped to path); ref = git refs matching pattern (first-use via the earliest ref-target committer date).",
@@ -104,6 +104,18 @@
     },
     {"version": "1.19.0", "observable": false, "note": "writer-confinement hooks + shared-terms pending detection — plugin-internal enforcement"},
     {"version": "2.20.0", "observable": false, "note": "Codex CLI compatibility certification — plugin-internal/publishing, no consumer-repo trace"},
-    {"version": "2.21.0", "observable": false, "note": "delivery Stop-gate (sixth hook) — plugin-internal enforcement"}
+    {"version": "2.21.0", "observable": false, "note": "delivery Stop-gate (sixth hook) — plugin-internal enforcement"},
+    {
+      "id": "builtin-go-packs",
+      "capability": "Built-in go-naming and go-htmx stack packs (pinnable via sme[], seedable to .karta/sme/)",
+      "karta_version": "2.22.0",
+      "ship_date": "2026-07-21T10:33:39-04:00",
+      "detection": {
+        "kind": "grep",
+        "pattern": "go-naming",
+        "path": ".karta"
+      },
+      "durable": true
+    }
   ]
 }
