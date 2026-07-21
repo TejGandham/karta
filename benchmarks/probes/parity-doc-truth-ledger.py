@@ -29,6 +29,10 @@ Truth vars are recomputed each run (N_agents, N_skills, writer split, plugin ver
 The results file benchmarks/findings/doc-truth-<version>.json is re-emitted on every
 run and is byte-deterministic (no timestamps, run dates, or shas). The metric is the
 per-lane vector, never a scalar sum; retired claims/ledger entries are counted visibly.
+A parse-side retired-shape guard keeps retirement honest: an entry is skipped as
+retired only when it is genuinely dead — its "retired" value is a non-empty string
+reason and its id is not simultaneously enforced by a live entry; anything else
+yields B:retired-live:<id> / E:retired-live:<id> instead of a silent skip.
 
 Gate stance: emits the gate probe JSON contract
 {"id","status":"pass"|"fail","partial","implemented_checks","findings","metrics"}
@@ -156,6 +160,32 @@ def compute_truth(root: Path) -> dict:
         version = "unknown"
     return {"N_agents": len(agents), "N_skills": n_skills, "writer_agents": writers,
             "readonly_agents": len(agents) - writers, "plugin_version": version}
+
+
+def retired_guard(entries: list[dict], lane: str) -> list[dict]:
+    """Parse-side retired-shape guard for the add-only ledger: an entry may only be
+    skipped as retired when it is genuinely dead — its "retired" value must be a
+    non-empty string reason, and its id must not also be carried by a live
+    (non-retired) entry. Any other retired shape yields <lane>:retired-live:<id>
+    instead of a silent enforcement skip."""
+    live_ids = {e.get("id", "?") for e in entries if "retired" not in e}
+    violations = []
+    for e in entries:
+        if "retired" not in e:
+            continue
+        eid = e.get("id", "?")
+        reason = e.get("retired")
+        if not (isinstance(reason, str) and reason.strip()):
+            violations.append(_v(
+                f"{lane}:retired-live:{eid}",
+                f"entry {eid} is marked retired without a non-empty string reason "
+                f"({reason!r}) — not genuinely dead, refusing the silent skip"))
+        elif eid in live_ids:
+            violations.append(_v(
+                f"{lane}:retired-live:{eid}",
+                f"entry {eid} is marked retired but the same id is still enforced "
+                f"by a live entry — retirement did not end its obligations"))
+    return _dedupe(violations)
 
 
 def lane_b(root: Path, claims: list[dict], truth: dict) -> list[dict]:
@@ -415,10 +445,10 @@ def run_lanes(root: Path) -> tuple[dict, dict]:
     truth = compute_truth(root)
     claims, ledger, claim_errors = load_claims(root)
     lanes = {
-        "B": claim_errors + lane_b(root, claims, truth),
+        "B": claim_errors + retired_guard(claims, "B") + lane_b(root, claims, truth),
         "C": lane_c(root, truth),
         "D": lane_d(root),
-        "E": lane_e(root, ledger),
+        "E": retired_guard(ledger, "E") + lane_e(root, ledger),
         "F": lane_f(root),
         "G": lane_g(root),
     }
@@ -567,6 +597,28 @@ def self_test() -> int:
         got = lane_b(root, [{"id": "old", "file": "README.md", "line-regex": "gone text",
                              "expect": 2, "retired": "superseded"}], truth)
         check("a retired claims entry is skipped, not stale", got == [], repr(got))
+
+        clean = retired_guard([
+            {"id": "live-a", "check": "py-grep", "expect_min_files": 1},
+            {"id": "dead-b", "check": "py-co-grep",
+             "retired": "promise corrected (2026-07-21): the doc no longer claims it"},
+        ], "E")
+        check("retired guard accepts a genuinely dead entry "
+              "(non-empty string reason, id not live)", clean == [], repr(clean))
+
+        got = [v["finding_id"] for v in retired_guard([
+            {"id": "blank", "retired": ""},
+            {"id": "flag", "retired": True},
+        ], "E")]
+        check("retired guard flags empty and non-string retired reasons as retired-live",
+              got == ["E:retired-live:blank", "E:retired-live:flag"], repr(got))
+
+        got = [v["finding_id"] for v in retired_guard([
+            {"id": "dup", "retired": "superseded by the re-added dup entry"},
+            {"id": "dup", "file": "README.md", "line-regex": "x", "expect": 2},
+        ], "B")]
+        check("retired guard flags a retired id still enforced by a live entry",
+              got == ["B:retired-live:dup"], repr(got))
 
         root = _write_tree(Path(td) / "pins", {
             "docs/how-to/codex.md": "## Karta 1.19 features\nAnd Karta 1.19 again.\n",

@@ -1099,6 +1099,45 @@ def _run_self_test() -> int:
         ("benign content encodes byte-identical (no markup characters, no change)",
          _inert_json(benign) == json.dumps(benign, separators=(",", ":"))),
     ]
+
+    # Edge-shape fixtures (panel follow-up): lock the escaping contract on the
+    # shapes most likely to regress — solidus-heavy paths, JS line separators,
+    # backslash/markup adjacency, unterminated close tags, and a nested state.
+    repo_path = "/mnt/agent-storage/vader/src/karta"
+    slash_out = _inert_json(repo_path)
+    linesep = {"title": "line\u2028sep\u2029para"}
+    linesep_out = _inert_json(linesep)
+    bs_lt = "\\<script>alert(1)</script>"
+    bs_lt_out = _inert_json(bs_lt)
+    naked_close = "</script"
+    naked_out = _inert_json(naked_close)
+    nested = {
+        "repo": repo_path,
+        "binders": [{"slug": "s-edit", "path": ".karta/binders/s-edit.json",
+                     "summary": "touches src/app/main.py & <b>docs/</b>",
+                     "items": {"detail": [
+                         {"file": "skills/karta-status/scripts/serve_status.py",
+                          "assert": "GET /state.json returns 200"}]}}],
+    }
+    nested_out = _inert_json(nested)
+    checks += [
+        ("a /-heavy repo path escapes every solidus and decodes to the identical path",
+         slash_out == '"' + repo_path.replace("/", "\\/") + '"'
+         and json.loads(slash_out) == repo_path),
+        ("U+2028/U+2029 never appear raw in the body (escaped, JS-safe) and round-trip",
+         "\\u2028" in linesep_out and "\\u2029" in linesep_out
+         and "\u2028" not in linesep_out and "\u2029" not in linesep_out
+         and json.loads(linesep_out) == linesep),
+        ("a backslash immediately before < keeps its pairing (raw < gone, decodes identical)",
+         bs_lt_out.startswith('"\\\\\\u003c') and "<" not in bs_lt_out
+         and json.loads(bs_lt_out) == bs_lt),
+        ("a naked </script (no closing >) never appears raw and round-trips",
+         "</script" not in naked_out and "<" not in naked_out
+         and json.loads(naked_out) == naked_close),
+        ("a nested state dict with / paths serializes with zero raw < or > and round-trips",
+         "<" not in nested_out and ">" not in nested_out
+         and json.loads(nested_out) == nested),
+    ]
     failures = sum(1 for _, ok in checks if not ok)
     for name, ok in checks:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}")

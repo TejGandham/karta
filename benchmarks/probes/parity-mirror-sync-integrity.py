@@ -30,24 +30,31 @@ Baseline: probe IDs are permanent and a previously-passing ID may never regress 
 status "fail" only on regression against the last committed results file;
 the regression baseline is the newest git-tracked results file for this vector (git ls-files), never an untracked or same-run file.
 When no tracked baseline exists (the first build run) no regression is possible;
-the run records the seeded findings and the probe fails closed if a seeded
-finding is absent from its own first baseline. The two wrapped repo checkers stay
+the run records the drill outcomes as the first baseline and fails closed if any
+drill is red on that first run — the healed contract expects all drills green,
+so recording a red first baseline would normalize a defect. The two wrapped
+repo checkers stay
 fail-closed: either failing flips status to "fail" directly.
 
 On stdout the probe emits the gate probe JSON contract
 {"id","status":"pass"|"fail","partial","implemented_checks","findings","metrics"}
 and exits 0 whether pass or fail (a nonzero exit means the probe itself crashed).
---self-test drives the three drills against a miniature synthetic tree embedding
-the repo's real sync scripts — never the real repo — printing
-[PASS]/[FAIL] lines and an N/N checks passed summary; it exits 0 only when the
-summary is N/N checks passed, nonzero otherwise.
+--self-test drives the three drills against miniature synthetic trees embedding
+the repo's real sync scripts — never the real repo. The healed machinery must
+run every drill green (exec bits project, degraded locks are repaired
+non-destructively, tampered externals are flagged by name, re-baselines keep
+the displaced hash in previousHash and print old -> new), and negative coverage
+stays real: one defect per drill is seeded into a fixture tree's sync script
+and that drill must go red, proving the probe still catches each regression.
+Prints [PASS]/[FAIL] lines and an N/N checks passed summary; exits 0 only when
+the summary is N/N checks passed, nonzero otherwise.
 
 Usage:
   python3 benchmarks/probes/parity-mirror-sync-integrity.py --target <repo-root>
   python3 benchmarks/probes/parity-mirror-sync-integrity.py --self-test
 """
 from __future__ import annotations
-import argparse, datetime, json, os, shutil, subprocess, sys, tempfile
+import argparse, datetime, hashlib, json, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
 
 PROBE_ID = "parity-mirror-sync-integrity"
@@ -286,12 +293,13 @@ def verdict(cards: list[dict], baseline: dict[str, bool] | None,
     if baseline is None:
         for did in DRILL_IDS:
             card = by_id.get(did)
-            if card is not None and card["pass"] and "refused" not in card["evidence"]:
+            if card is None or not card["pass"]:
                 fail = True
                 extra.append({
-                    "finding_id": f"seed-absent-{did}", "severity": "error",
-                    "summary": (f"{did} passed on the first (baseline) run — the contract's "
-                                "seeded finding is absent from its own first baseline "
+                    "finding_id": f"first-run-red-{did}", "severity": "error",
+                    "summary": (f"{did} is red on the first (baseline) run — the healed "
+                                "contract expects every drill green at first measurement; "
+                                "recording a red first baseline would normalize the defect "
                                 "(fail-closed)")})
     else:
         for pid, passed in sorted(baseline.items()):
@@ -373,8 +381,11 @@ def run_live(target: Path) -> int:
     return 0
 
 
-def _build_synthetic_tree(root: Path, with_external: bool, repo_scripts: Path) -> None:
-    """A miniature repo shape embedding the real sync scripts, synced into place."""
+def _build_synthetic_tree(root: Path, with_external: bool, repo_scripts: Path) -> str:
+    """A miniature repo shape embedding the real sync scripts, synced into place.
+
+    Returns the setup sync's combined output — with an external fixture present,
+    write mode re-baselines the seeded 0*64 computedHash and prints old -> new."""
     (root / "skills" / "demo-skill" / "scripts").mkdir(parents=True)
     (root / "skills" / "demo-skill" / "SKILL.md").write_text(
         "---\nname: demo-skill\ndescription: bench self-test fixture\n---\nfixture\n")
@@ -396,6 +407,7 @@ def _build_synthetic_tree(root: Path, with_external: bool, repo_scripts: Path) -
                           cwd=root)
     if code != 0:
         raise RuntimeError(f"synthetic tree setup sync failed: {out}{err}")
+    return out + err
 
 
 def self_test() -> int:
@@ -404,24 +416,53 @@ def self_test() -> int:
     with tempfile.TemporaryDirectory(prefix="karta-sync-selftest-") as td:
         base = Path(td)
 
+        # Healed drills: all three vectors run green on a tree embedding the
+        # repo's real (fixed) sync scripts.
         tree = base / "tree-ext"
-        _build_synthetic_tree(tree, with_external=True, repo_scripts=repo_scripts)
+        setup_out = _build_synthetic_tree(tree, with_external=True, repo_scripts=repo_scripts)
         by_id = {c["id"]: c for c in run_drills(tree)}
         p1, p2, p3 = (by_id[d] for d in DRILL_IDS)
-        checks.append(("P1 reproduces the mode-blind projection (exec bit lost)",
-                       p1["pass"] is False and p1["evidence"]["check"]["exit"] == 0))
-        checks.append(("P2 degraded lock destroys the external skill dir and crashes",
-                       p2["pass"] is False
-                       and p2["evidence"]["external_dir_survived"] is False
-                       and p2["evidence"]["write"]["exit"] != 0))
+        checks.append(("P1 write-mode sync projects the canonical exec bit onto both mirrors",
+                       p1["pass"] is True and p1["evidence"]["write"]["exit"] == 0))
+        checks.append(("P1 --check flags the exec-bit drift before write repairs it",
+                       p1["evidence"]["check"]["exit"] != 0
+                       and any("executable bit" in ln
+                               for ln in p1["evidence"]["check"]["output"])))
+        checks.append(("P2 degraded lock is non-destructive: dir survives, write exits 0",
+                       p2["pass"] is True
+                       and p2["evidence"]["external_dir_survived"] is True
+                       and p2["evidence"]["write"]["exit"] == 0))
         checks.append(("P2 used the live external fixture, not synthesis",
                        p2["evidence"]["synthesized_fixture"] is False
                        and p2["evidence"]["external_skill"] == "ext-demo"))
-        checks.append(("P3 tampered external content stays silent (fails)",
-                       p3["pass"] is False))
+        checks.append(("P3 tampered external SKILL.md fails --check naming the skill",
+                       p3["pass"] is True and p3["evidence"]["check"]["flagged"] is True))
         blob = json.dumps([p1, p2, p3])
         checks.append(("evidence cards normalize scratch roots to $S",
                        "$S/" in blob and "karta-sync-integrity-" not in blob))
+
+        # previousHash audit trail: the setup sync already re-baselined the
+        # fixture's seeded 0*64 computedHash to sha256 of the local SKILL.md.
+        ext_hash = hashlib.sha256(b"# external fixture\n").hexdigest()
+        entry = json.loads((tree / "skills-lock.json").read_text())["skills"]["ext-demo"]
+        checks.append(("re-baseline stores sha256(SKILL.md), keeps the prior hash in "
+                       "previousHash, and prints old -> new",
+                       entry.get("computedHash") == ext_hash
+                       and entry.get("previousHash") == "0" * 64
+                       and f"{'0' * 64} -> {ext_hash}" in setup_out))
+        (tree / ".agents" / "skills" / "ext-demo" / "SKILL.md").write_text(
+            "# external fixture v2\n")
+        v2_hash = hashlib.sha256(b"# external fixture v2\n").hexdigest()
+        sync = tree / "scripts" / "sync_codex_skills.py"
+        code, out, err = _run([sys.executable, str(sync)], cwd=tree)
+        entry = json.loads((tree / "skills-lock.json").read_text())["skills"]["ext-demo"]
+        checks.append(("a second re-baseline rolls previousHash forward to the displaced hash",
+                       code == 0 and entry.get("computedHash") == v2_hash
+                       and entry.get("previousHash") == ext_hash
+                       and f"{ext_hash} -> {v2_hash}" in out + err))
+        code, out, _err = _run([sys.executable, str(sync), "--check"], cwd=tree)
+        checks.append(("previousHash is audit-only: --check passes on the re-baselined tree",
+                       code == 0 and "IN SYNC" in out))
 
         tree0 = base / "tree-noext"
         _build_synthetic_tree(tree0, with_external=False, repo_scripts=repo_scripts)
@@ -430,8 +471,38 @@ def self_test() -> int:
         checks.append(("zero-external lock synthesizes bench-external-probe",
                        p2b["evidence"]["synthesized_fixture"] is True
                        and p2b["evidence"]["external_skill"] == SYNTH_NAME))
-        checks.append(("synthesized fixture keeps the P2 denominator alive (drill ran, red)",
-                       p2b["pass"] is False))
+        checks.append(("synthesized fixture keeps the P2 denominator alive (drill ran, green)",
+                       p2b["pass"] is True))
+
+        # Negative coverage stays real: seed one defect per drill into a fresh
+        # fixture tree's sync script and prove that drill goes red — the probe
+        # still CATCHES each regression instead of assuming the heal is permanent.
+        def seeded_defect(name: str, anchor: str, replacement: str) -> Path:
+            t = base / name
+            _build_synthetic_tree(t, with_external=True, repo_scripts=repo_scripts)
+            script = t / "scripts" / "sync_codex_skills.py"
+            src = script.read_text()
+            if src.count(anchor) != 1:
+                raise RuntimeError(
+                    f"seeded-defect anchor not unique in sync script: {anchor!r}")
+            script.write_text(src.replace(anchor, replacement))
+            return t
+
+        bad = seeded_defect("seed-p1", "p.chmod((mode & ~0o111) | exec_bits)",
+                            "pass  # seeded defect: exec bit never projected")
+        checks.append(("seeded mode-blind projection defect turns P1 red (caught)",
+                       drill_p1(bad)["pass"] is False))
+        bad = seeded_defect(
+            "seed-p2",
+            "return (set(_lock_skills()) | (mirror_dirs - "
+            "install_projection_skill_names())) - canonical",
+            "return set()  # seeded defect: externals unshielded from orphan cleanup")
+        checks.append(("seeded unshielded-orphan-cleanup defect turns P2 red (caught)",
+                       drill_p2(bad)["pass"] is False))
+        bad = seeded_defect("seed-p3", 'elif local != meta["computedHash"]:',
+                            "elif False:  # seeded defect: content hash never recomputed")
+        checks.append(("seeded hash-blind integrity defect turns P3 red (caught)",
+                       drill_p3(bad)["pass"] is False))
 
         bad_source = base / "not-a-repo"
         bad_source.mkdir()
@@ -454,11 +525,15 @@ def self_test() -> int:
         st_same, _ = verdict(unchanged, base_map, 0)
         checks.append(("an unchanged matrix against its baseline stays pass",
                        st_same == "pass"))
-        st_seed, ex_seed = verdict(unchanged, None, 0)
-        checks.append(("a seeded finding absent from the first baseline fails closed",
-                       st_seed == "fail"
-                       and any(f["finding_id"].startswith("seed-absent-")
-                               for f in ex_seed)))
+        st_red, ex_red = verdict(unchanged, None, 0)
+        checks.append(("a red drill on the first (baseline) run fails closed",
+                       st_red == "fail"
+                       and any(f["finding_id"].startswith("first-run-red-")
+                               for f in ex_red)))
+        all_green = [{"id": d, "pass": True, "evidence": {}} for d in DRILL_IDS]
+        st_first, ex_first = verdict(all_green, None, 0)
+        checks.append(("an all-green first run establishes the baseline cleanly",
+                       st_first == "pass" and not ex_first))
 
     passed = sum(1 for _name, ok in checks if ok)
     for name, ok in checks:

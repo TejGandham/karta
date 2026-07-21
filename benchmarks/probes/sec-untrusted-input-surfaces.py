@@ -12,16 +12,20 @@ live claude -p cells are phase 3), so this probe declares partial: true.
   P1  launches skills/karta-status/scripts/serve_status.py against the fixture on
       127.0.0.1 with an ephemeral port, fetches / and /state.json via urllib, and
       byte-greps the responses for every attacker payload (an unescaped payload =
-      a sink; red today: serve_status has zero html.escape calls while it
-      interpolates binder strings into HTML). It also asserts the bind address
-      stays 127.0.0.1 and that a keyless request is refused when --key is set. The
-      server is always torn down, and a server that fails to start is a probe
-      failure (fail-closed), never a silent skip.
+      a sink; healed: serve_status neutralizes binder-derived strings through its
+      inert JSON encoder, so the frozen sink list is empty and must stay empty).
+      It also asserts the bind address stays 127.0.0.1 and that a keyless request
+      is refused when --key is set. The server is always torn down, and a server
+      that fails to start is a probe failure (fail-closed), never a silent skip.
   P2  runs hooks/scripts/inject_karta_status.py against the fixture and asserts the
-      injected block wraps repo-derived text in an inert delimiter (red today: the
-      lines are undelimited) and stays under the pinned byte budget committed in
-      benchmarks/fixtures/adversarial/expected.json, recording verbatim what
-      reaches context.
+      injected block wraps repo-derived text in an inert delimiter (healed: the
+      block arrives fenced in <karta-status> ... </karta-status>) and stays under
+      the pinned byte budget committed in benchmarks/fixtures/adversarial/
+      expected.json, recording verbatim what reaches context. That budget is
+      pinned in two places — BYTE_BUDGET in the hook source and
+      injection_byte_budget in expected.json — so P2 also parses the hook
+      constant and fails the injection-byte-budget cell when the two values
+      disagree (metric: budget_single_source).
 
 Fixture: benchmarks/fixtures/adversarial/ ships the hostile payload files (a
 binder JSON whose title/summary/contract/oracle strings carry <script> / <img
@@ -36,13 +40,13 @@ Stdout is the gate probe JSON contract
 exit 0 whether pass or fail (a nonzero exit means the probe itself crashed).
 
 Verdict rule (baseline regression): status "fail" only on regression against the
-last committed results file — a NEW unescaped sink beyond the frozen list, or a
-passing check (escaped-render / bind-scope / key-gate / injection-inertness /
-injection-byte-budget) flipping toward worse. On the first run (no tracked
-baseline yet) the probe fails closed unless its own matrix reproduces the
-contract's seeded findings: at least one payload reaches the rendered HTML
-unescaped, the injection block carries no inert delimiter, and the loopback-bind
-and key-gate assertions hold as they do today. Baseline selection is strict:
+last committed results file — a NEW unescaped sink beyond the (now empty) frozen
+list, or a passing check (escaped-render / bind-scope / key-gate /
+injection-inertness / injection-byte-budget) flipping toward worse. On the first
+run (no tracked baseline yet) the probe fails closed unless its own matrix
+reproduces the healed contract: zero payloads survive into any rendered surface,
+the injection block arrives fenced in its inert delimiter, and the loopback-bind,
+key-gate and byte-budget assertions hold. Baseline selection is strict:
 the regression baseline is the newest git-tracked results file for this vector
 (git ls-files), never an untracked or same-run file — read from the git index,
 so this run's own working-tree write can never be its own baseline.
@@ -101,7 +105,8 @@ KEY_TOKEN = "s3cret-probe-key"
 
 # Accepted "inert delimiter" shapes for the SessionStart injection: a fenced or
 # sentinel-wrapped block marks the enclosed repo-derived text as data, not
-# instruction. inject_karta_status.py ships none today, so P2 is red.
+# instruction. inject_karta_status.py fences its block in <karta-status> today;
+# the alternates keep the recognizer honest for equivalent healed shapes.
 _DELIM_PAIRS = (
     (re.compile(r"<karta-status[ >]"), re.compile(r"</karta-status>")),
     (re.compile(r"```"), re.compile(r"```")),  # a fenced block (open + close)
@@ -320,6 +325,21 @@ def probe_p1(target: Path, repo: Path, expected: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
+_BUDGET_RE = re.compile(r"^BYTE_BUDGET\s*=\s*(\d+)", re.M)
+
+
+def _hook_budget(target: Path) -> int | None:
+    """The BYTE_BUDGET constant parsed from the hook source; None when the file
+    or the constant is absent (which the caller treats as a budget mismatch —
+    fail-closed, never a silent skip)."""
+    try:
+        src = (target / INJECT_REL).read_text()
+    except OSError:
+        return None
+    m = _BUDGET_RE.search(src)
+    return int(m.group(1)) if m else None
+
+
 def _is_delimited(text: str) -> bool:
     for open_re, close_re in _DELIM_PAIRS:
         opens = list(open_re.finditer(text))
@@ -343,11 +363,20 @@ def probe_p2(target: Path, repo: Path, expected: dict) -> tuple[dict, str]:
                          f"{p.stderr.strip()[-200:]}")
     verbatim = p.stdout
     budget = expected["injection_byte_budget"]
+    hook_budget = _hook_budget(target)
+    single_source = hook_budget == budget
     nbytes = len(verbatim.encode("utf-8"))
     delimited = _is_delimited(verbatim)
+    budget_cell: dict = {"good": nbytes <= budget and single_source,
+                         "bytes": nbytes, "budget": budget}
+    if not single_source:
+        # Only recorded on mismatch so an in-sync matrix stays byte-identical
+        # to the committed baseline; the metric is always in probe stdout.
+        budget_cell["hook_budget"] = hook_budget
+        budget_cell["budget_single_source"] = False
     cell = {
         "injection-inertness": {"good": delimited, "delimited": delimited},
-        "injection-byte-budget": {"good": nbytes <= budget, "bytes": nbytes, "budget": budget},
+        "injection-byte-budget": budget_cell,
     }
     return cell, verbatim
 
@@ -389,20 +418,20 @@ def compare_matrices(baseline: dict, current: dict) -> list[str]:
     return regressions
 
 
-def seed_state(matrix: dict, expected: dict) -> list[str]:
-    """Names of contract-named seeded findings that are ABSENT from this matrix
-    (the first-run fail-closed trigger). Empty list = every seed reproduced."""
+def healed_state(matrix: dict) -> list[str]:
+    """Names of healed-contract cells that are ABSENT from this matrix (the
+    first-run fail-closed trigger). Empty list = the healed reality reproduced:
+    zero unescaped sinks, delimited injection, bind/key/budget assertions good."""
     cells = matrix["cells"]
-    min_html = expected.get("expect", {}).get("min_html_sinks", 1)
-    seeds = {
-        "P1-unescaped-render": cells["escaped-render"]["good"] is False,
-        "P1-html-sink-present": cells["escaped-render"]["html_sink_count"] >= min_html,
-        "P2-undelimited-injection": cells["injection-inertness"]["good"] is False,
+    healed = {
+        "P1-escaped-render-clean": cells["escaped-render"]["good"] is True
+                                   and matrix["unescaped_sinks"] == [],
+        "P2-delimited-injection": cells["injection-inertness"]["good"] is True,
         "P1-bind-scope-holds": cells["bind-scope"]["good"] is True,
         "P1-key-gate-holds": cells["key-gate"]["good"] is True,
         "P2-byte-budget-holds": cells["injection-byte-budget"]["good"] is True,
     }
-    return [name for name, present in seeds.items() if not present]
+    return [name for name, present in healed.items() if not present]
 
 
 def find_baseline(target: Path) -> tuple[str | None, dict | None]:
@@ -424,16 +453,16 @@ def find_baseline(target: Path) -> tuple[str | None, dict | None]:
     return path, doc
 
 
-def decide_status(matrix: dict, baseline_doc: dict | None, expected: dict
+def decide_status(matrix: dict, baseline_doc: dict | None
                   ) -> tuple[str, list[str], list[str]]:
-    """(status, regressions, seed_missing). With a committed baseline: fail only on
-    regression. Without one (first run): fail closed unless every seeded finding is
-    reproduced in the probe's own first baseline."""
+    """(status, regressions, healed_missing). With a committed baseline: fail only
+    on regression. Without one (first run): fail closed unless the probe's own
+    matrix reproduces the healed contract."""
     if baseline_doc is not None:
         regressions = compare_matrices(baseline_doc["probe_matrix"], matrix)
         return ("fail" if regressions else "pass"), regressions, []
-    seed_missing = seed_state(matrix, expected)
-    return ("fail" if seed_missing else "pass"), [], seed_missing
+    missing = healed_state(matrix)
+    return ("fail" if missing else "pass"), [], missing
 
 
 def seeded_findings(matrix: dict, verbatim: str) -> list[dict]:
@@ -444,10 +473,19 @@ def seeded_findings(matrix: dict, verbatim: str) -> list[dict]:
         findings.append({
             "finding_id": "seed-P1-unescaped-render", "severity": "high",
             "summary": "serve_status.py renders attacker-controlled binder strings "
-                       "unescaped (zero html.escape calls): "
+                       "unescaped: "
                        f"{cells['escaped-render']['sink_count']} unescaped sink(s), "
                        f"{len(html_sinks)} in the rendered HTML "
                        f"({', '.join(html_sinks) or 'none'})",
+        })
+    bb = cells["injection-byte-budget"]
+    if bb.get("budget_single_source") is False:
+        findings.append({
+            "finding_id": "P2-byte-budget-split-source", "severity": "high",
+            "summary": "the injection byte budget disagrees across its two pinned "
+                       f"sources: hook BYTE_BUDGET={bb.get('hook_budget')} vs fixture "
+                       f"injection_byte_budget={bb.get('budget')} — re-sync them "
+                       "(the injection-byte-budget cell fails until they agree)",
         })
     findings.append({
         "finding_id": "seed-P1-frozen-sink-list", "severity": "info",
@@ -489,7 +527,7 @@ def run_probe(target: Path) -> int:
     expected = _load_expected(target)
     matrix, verbatim = build_matrix(target, expected)
     baseline_path, baseline_doc = find_baseline(target)
-    status, regressions, seed_missing = decide_status(matrix, baseline_doc, expected)
+    status, regressions, healed_missing = decide_status(matrix, baseline_doc)
 
     run_date = datetime.date.today().isoformat()
     results_dir = target / RESULTS_DIR
@@ -504,12 +542,13 @@ def run_probe(target: Path) -> int:
                   "summary": f"regression versus committed baseline {baseline_path}: {r}"}
                  for r in regressions]
     if baseline_doc is None:
-        findings += [{"finding_id": f"seed-missing-{sid}", "severity": "error",
-                      "summary": f"first-run baseline lacks contract-named seeded finding "
+        findings += [{"finding_id": f"healed-missing-{sid}", "severity": "error",
+                      "summary": f"first-run matrix lacks healed-contract cell "
                                  f"{sid} — failing closed (fixture or surface drift)"}
-                     for sid in seed_missing]
+                     for sid in healed_missing]
 
     cells = matrix["cells"]
+    hook_budget = _hook_budget(target)
     print(json.dumps({
         "id": PROBE_ID,
         "status": status,
@@ -520,6 +559,7 @@ def run_probe(target: Path) -> int:
             "P1-key-gate(--key refuses keyless)",
             "P2-injection-inertness(inert delimiter)",
             "P2-injection-byte-budget",
+            "P2-budget-single-source(hook BYTE_BUDGET == fixture budget)",
             "frozen-unescaped-sink-list",
             "baseline-regression-diff",
         ],
@@ -533,6 +573,8 @@ def run_probe(target: Path) -> int:
             "injection_delimited": cells["injection-inertness"]["good"],
             "injection_bytes": cells["injection-byte-budget"]["bytes"],
             "injection_budget": cells["injection-byte-budget"]["budget"],
+            "hook_byte_budget": hook_budget,
+            "budget_single_source": hook_budget == expected["injection_byte_budget"],
             "baseline_file": baseline_path,
             "regressions": regressions,
             "results_file": str(RESULTS_DIR / f"{run_date}-sec-probes.json"),
@@ -592,77 +634,153 @@ def _run_self_test() -> int:
 
     if matrix is not None:
         cells = matrix["cells"]
-        html_sinks = [s for s in matrix["unescaped_sinks"] if s.startswith("index::")]
-        check("P1 reproduces the seeded finding: >=1 payload reaches the rendered HTML unescaped",
-              cells["escaped-render"]["good"] is False and len(html_sinks) >= 1)
-        check("P1 records the frozen unescaped-sink list including /state.json sinks",
-              any(s.startswith("state_json::") for s in matrix["unescaped_sinks"]))
+        check("P1 healed: zero payloads escape into / or /state.json (frozen list cleared)",
+              cells["escaped-render"]["good"] is True
+              and cells["escaped-render"]["sink_count"] == 0
+              and cells["escaped-render"]["html_sink_count"] == 0
+              and matrix["unescaped_sinks"] == [])
         check("P1 loopback-bind assertion holds (127.0.0.1, reachable)",
               cells["bind-scope"]["good"] is True)
         check("P1 key-gate holds: keyless refused (403), keyed allowed (200)",
               cells["key-gate"]["good"] is True
               and cells["key-gate"]["keyless_status"] == 403
               and cells["key-gate"]["keyed_status"] == 200)
-        check("P2 reproduces the seeded finding: injection carries no inert delimiter",
-              cells["injection-inertness"]["good"] is False)
+        check("P2 healed: injection arrives fenced in the <karta-status> delimiter",
+              cells["injection-inertness"]["good"] is True
+              and verbatim.lstrip().startswith("<karta-status>")
+              and "</karta-status>" in verbatim)
         check("P2 stays under the pinned byte budget and records verbatim output",
               cells["injection-byte-budget"]["good"] is True and len(verbatim) > 0)
-        check("first run reproduces every seeded finding (fail-closed set is empty)",
-              seed_state(matrix, expected) == [])
+        check("hook BYTE_BUDGET and fixture injection_byte_budget agree (single source)",
+              _hook_budget(target) is not None
+              and _hook_budget(target) == expected["injection_byte_budget"]
+              and cells["injection-byte-budget"]["good"] is True)
+        check("first run reproduces the healed contract (fail-closed set is empty)",
+              healed_state(matrix) == [])
 
-    # Delimiter recognizer: today's plain lines are undelimited; a fenced block is inert.
+        # Detection stays proven on synthetic defects: a sabotaged serve_status
+        # copy (inert JSON encoder stripped back to plain json.dumps) must leak
+        # raw payloads into both surfaces, and a hook copy with a drifted
+        # BYTE_BUDGET must fail the injection-byte-budget cell.
+        sab_leaks = drift_fails = False
+        sab_err = ""
+        scratch2, repo2 = _assemble_fixture(target)
+        fake_root = Path(tempfile.mkdtemp(prefix="karta-bench-sab-"))
+        try:
+            serve_src = (target / SERVE_REL).read_text()
+            guard = 'if __name__ == "__main__":'
+            sabotaged = serve_src.replace(
+                guard,
+                "def _inert_json(obj):\n    return json.dumps(obj)\n\n\n" + guard, 1)
+            shutil.copytree((target / SERVE_REL).parent, (fake_root / SERVE_REL).parent)
+            (fake_root / SERVE_REL).write_text(sabotaged)
+            proc, port = _launch_server(fake_root, repo2, key=None)
+            try:
+                _, idx_body = _fetch(port, "/")
+                _, st_body = _fetch(port, "/state.json")
+                sab_sinks = _grep_sinks(expected["payloads"],
+                                        {"index": idx_body, "state_json": st_body})
+                sab_leaks = (serve_src.count(guard) == 1
+                             and any(s.startswith("index::") for s in sab_sinks)
+                             and any(s.startswith("state_json::") for s in sab_sinks))
+            finally:
+                _terminate(proc)
+
+            hook_src = (target / INJECT_REL).read_text()
+            drifted = _BUDGET_RE.sub("BYTE_BUDGET = 8192", hook_src, count=1)
+            (fake_root / INJECT_REL).parent.mkdir(parents=True)
+            (fake_root / INJECT_REL).write_text(drifted)
+            drift_cells, _ = probe_p2(fake_root, repo2, expected)
+            bb = drift_cells["injection-byte-budget"]
+            drift_fails = (bb["good"] is False
+                           and bb.get("budget_single_source") is False
+                           and bb.get("hook_budget") == 8192)
+        except ProbeError as e:
+            sab_err = f" ({e})"
+        finally:
+            shutil.rmtree(scratch2, ignore_errors=True)
+            shutil.rmtree(fake_root, ignore_errors=True)
+        check("detection proven: a sabotaged serve_status (encoder stripped) leaks "
+              f"raw payloads into both surfaces{sab_err}", sab_leaks)
+        check("detection proven: a drifted hook BYTE_BUDGET fails the "
+              f"injection-byte-budget cell{sab_err}", drift_fails)
+
+        # Detection stays proven: stripping the fence off the real hook output
+        # flips the recognizer back to undelimited.
+        stripped = "\n".join(ln for ln in verbatim.splitlines()
+                             if ln.strip() not in ("<karta-status>", "</karta-status>"))
+        check("detection proven: fence-stripped hook output reads undelimited",
+              len(stripped) > 0 and _is_delimited(stripped) is False)
+
+    # Delimiter recognizer: plain lines are undelimited; a fenced block is inert.
     check("delimiter recognizer: plain karta lines are undelimited",
           _is_delimited("karta: 1 binder(s)\n  adversarial-fixture — 1 item(s)") is False)
     check("delimiter recognizer: a fenced/sentinel block reads as delimited",
           _is_delimited("<karta-status>\nkarta: 1 binder(s)\n</karta-status>") is True)
 
+    # Budget parser on synthetic hook files — no server needed.
+    with tempfile.TemporaryDirectory() as td:
+        fake_t = Path(td)
+        hook = fake_t / INJECT_REL
+        hook.parent.mkdir(parents=True)
+        hook.write_text("# drifted copy\nBYTE_BUDGET = 99999\n")
+        check("budget parser reads a drifted hook constant that disagrees with the fixture",
+              _hook_budget(fake_t) == 99999
+              and (not exp_ok or _hook_budget(fake_t) != expected["injection_byte_budget"]))
+        hook.write_text("# no budget constant here\n")
+        check("a hook without a parseable BYTE_BUDGET reads None (fail-closed mismatch)",
+              _hook_budget(fake_t) is None)
+
     # Decision logic on synthetic matrices — no server needed.
     base = {
-        "unescaped_sinks": ["index::img-onerror", "state_json::img-onerror"],
+        "unescaped_sinks": [],
         "cells": {
-            "escaped-render": {"good": False},
+            "escaped-render": {"good": True, "sink_count": 0, "html_sink_count": 0},
             "bind-scope": {"good": True},
             "key-gate": {"good": True},
-            "injection-inertness": {"good": False},
+            "injection-inertness": {"good": True},
             "injection-byte-budget": {"good": True},
         },
     }
     same = json.loads(json.dumps(base))
-    st, regs, _ = decide_status(same, {"probe_matrix": base}, expected or {})
-    check("identical matrix vs committed baseline stays pass", st == "pass" and regs == [])
+    st, regs, _ = decide_status(same, {"probe_matrix": base})
+    check("identical healed matrix vs committed baseline stays pass",
+          st == "pass" and regs == [])
 
     newsink = json.loads(json.dumps(base))
     newsink["unescaped_sinks"].append("index::new-payload")
-    st, regs, _ = decide_status(newsink, {"probe_matrix": base}, expected or {})
-    check("a NEW sink beyond the frozen list flips status to fail",
-          st == "fail" and regs == ["new-sink::index::new-payload"])
+    newsink["cells"]["escaped-render"]["good"] = False
+    st, regs, _ = decide_status(newsink, {"probe_matrix": base})
+    check("a NEW sink beyond the (empty) frozen list flips status to fail",
+          st == "fail" and "new-sink::index::new-payload" in regs
+          and "regressed::escaped-render" in regs)
 
-    gone = json.loads(json.dumps(base))
-    gone["unescaped_sinks"] = ["index::img-onerror"]  # a sink disappeared (toward 0)
-    st, regs, _ = decide_status(gone, {"probe_matrix": base}, expected or {})
-    check("a sink disappearing (count toward 0) is never a regression",
+    legacy = json.loads(json.dumps(base))
+    legacy["unescaped_sinks"] = ["index::img-onerror", "state_json::img-onerror"]
+    legacy["cells"]["escaped-render"]["good"] = False
+    legacy["cells"]["injection-inertness"]["good"] = False
+    st, regs, _ = decide_status(json.loads(json.dumps(base)), {"probe_matrix": legacy})
+    check("sinks disappearing and cells healing vs a defect-era baseline is never a regression",
           st == "pass" and regs == [])
 
-    flip = json.loads(json.dumps(base))
-    flip["cells"]["bind-scope"]["good"] = False  # a passing check flips toward worse
-    st, regs, _ = decide_status(flip, {"probe_matrix": base}, expected or {})
-    check("a passing check (bind-scope) flipping toward worse flips status to fail",
-          st == "fail" and regs == ["regressed::bind-scope"])
+    for cell_name in ("bind-scope", "key-gate", "injection-inertness",
+                      "injection-byte-budget"):
+        flip = json.loads(json.dumps(base))
+        flip["cells"][cell_name]["good"] = False
+        st, regs, _ = decide_status(flip, {"probe_matrix": base})
+        check(f"a {cell_name} cell flipping toward worse flips status to fail",
+              st == "fail" and regs == [f"regressed::{cell_name}"])
 
-    keyflip = json.loads(json.dumps(base))
-    keyflip["cells"]["key-gate"]["good"] = False
-    st, regs, _ = decide_status(keyflip, {"probe_matrix": base}, expected or {})
-    check("a key-gate regression flips status to fail",
-          st == "fail" and regs == ["regressed::key-gate"])
-
-    # First-run fail-closed when a contract-named seed is absent.
-    healed = json.loads(json.dumps(base))
-    healed["cells"]["escaped-render"]["good"] = True  # no sinks -> seed absent
-    healed["cells"]["escaped-render"]["html_sink_count"] = 0
-    healed["unescaped_sinks"] = []
-    st, _, missing = decide_status(healed, None, expected or {"expect": {"min_html_sinks": 1}})
-    check("first run fails closed when a seeded finding (unescaped render) is absent",
-          st == "fail" and "P1-unescaped-render" in missing)
+    # First-run fail-closed when the healed contract is not reproduced.
+    defective = json.loads(json.dumps(base))
+    defective["cells"]["escaped-render"]["good"] = False
+    defective["unescaped_sinks"] = ["index::img-onerror"]
+    st, _, missing = decide_status(defective, None)
+    check("first run fails closed when the healed contract (clean render) is absent",
+          st == "fail" and "P1-escaped-render-clean" in missing)
+    st, _, missing = decide_status(json.loads(json.dumps(base)), None)
+    check("first run on a fully healed matrix passes with an empty fail-closed set",
+          st == "pass" and missing == [])
 
     total, failures = len(results), results.count(False)
     print(f"\n{total - failures}/{total} checks passed")

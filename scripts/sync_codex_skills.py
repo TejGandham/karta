@@ -25,7 +25,10 @@ both mirrors and `--check` reports a projection whose bit drifted.
 External skill integrity: a lock entry's `computedHash` is the sha256 of the external
 skill's SKILL.md bytes as synced locally. Write mode recomputes and stores it
 (re-baseline); `--check` and scripts/validate_plugin.py recompute it and fail, naming
-the skill, on mismatch. A degraded lock state — an entry missing fields, or the entry
+the skill, on mismatch. A re-baseline that changes an entry's computedHash keeps the
+prior value in that entry's `previousHash` and reports old -> new — an audit trail
+distinguishing a legitimate upstream re-sync from tampering. `previousHash` is audit
+metadata only: read-side integrity checks ignore it entirely. A degraded lock state — an entry missing fields, or the entry
 absent entirely while the skill's directory exists — is recompute-needed, surfaced as
 a `--check` failure with a recompute instruction, and NEVER destructive: write mode
 repairs what it can and always leaves the external skill's files in place. Only a
@@ -140,28 +143,33 @@ def external_integrity_problems() -> list[str]:
     return problems
 
 
-def _rebaseline_lock() -> int:
+def _rebaseline_lock() -> list[tuple[str, str | None, str]]:
     """Write-mode re-baseline: store the sha256 of each external skill's SKILL.md
-    bytes as synced locally into its lock entry's computedHash. A degraded entry is
-    repaired in place (recompute-needed, never destructive). Returns entries updated."""
+    bytes as synced locally into its lock entry's computedHash. When that changes an
+    existing computedHash, the prior value is kept in the entry's previousHash as an
+    audit trail (read-side ignores it). A degraded entry is repaired in place
+    (recompute-needed, never destructive). Returns (name, old, new) per entry updated."""
     if not SKILLS_LOCK.is_file():
-        return 0
+        return []
     try:
         data = json.loads(SKILLS_LOCK.read_text())
     except (OSError, json.JSONDecodeError):
-        return 0
+        return []
     skills = data.get("skills")
     if not isinstance(skills, dict):
-        return 0
+        return []
     canonical = {p.name for p in skill_dirs()}
-    updated = 0
+    updated: list[tuple[str, str | None, str]] = []
     for name, meta in skills.items():
         if not isinstance(name, str) or name in canonical or not isinstance(meta, dict):
             continue
         local = _external_skill_hash(name)
-        if local and meta.get("computedHash") != local:
+        old = meta.get("computedHash")
+        if local and old != local:
+            if isinstance(old, str) and old:
+                meta["previousHash"] = old
             meta["computedHash"] = local
-            updated += 1
+            updated.append((name, old if isinstance(old, str) and old else None, local))
     if updated:
         SKILLS_LOCK.write_text(json.dumps(data, indent=2) + "\n")
     return updated
@@ -319,13 +327,19 @@ def self_test() -> int:
         ext_hash = hashlib.sha256(b"# external fixture\n").hexdigest()
         skill_md = root / ".agents" / "skills" / "ext-demo" / "SKILL.md"
 
-        code, _out = _sync(root)
+        code, out = _sync(root)
         lock = json.loads((root / "skills-lock.json").read_text())
         checks.append(("write mode re-baselines computedHash to the local content sha256",
                        code == 0 and lock["skills"]["ext-demo"]["computedHash"] == ext_hash))
+        checks.append(("re-baseline keeps the prior hash in previousHash and prints old -> new",
+                       lock["skills"]["ext-demo"].get("previousHash") == "0" * 64
+                       and f"{'0' * 64} -> {ext_hash}" in out))
         code, out = _sync(root, "--check")
         checks.append(("recompute over the re-baselined lock passes on the untouched tree",
                        code == 0 and "IN SYNC" in out))
+        checks.append(("entry carrying previousHash is audit-only, not flagged by --check",
+                       "previousHash" in (root / "skills-lock.json").read_text()
+                       and code == 0 and "ext-demo" not in out))
 
         tool = root / "skills" / "demo-a" / "scripts" / "tool.py"
         tool.chmod(tool.stat().st_mode | 0o111)
@@ -433,8 +447,9 @@ def main() -> int:
     wrote = _write_projection(want)
     install_wrote = _write_projection(install_want)
     rebaselined = _rebaseline_lock()
-    if rebaselined:
-        print(f"recomputed computedHash for {rebaselined} external skill(s) in skills-lock.json")
+    for name, old, new in rebaselined:
+        print(f"recomputed computedHash for external skill '{name}' in skills-lock.json: "
+              f"{old or '(none)'} -> {new}")
     for name in sorted(protected_external_names() - set(_lock_skills())):
         print(f"kept .agents/skills/{name} — no skills-lock.json entry "
               "(recompute-needed, never removed)")
