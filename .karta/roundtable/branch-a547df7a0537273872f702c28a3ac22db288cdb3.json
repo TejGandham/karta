@@ -1,0 +1,40 @@
+{
+  "reviewed_hash": "a547df7a0537273872f702c28a3ac22db288cdb3",
+  "tool": "roundtable-critique",
+  "target_kind": "branch",
+  "target_ref": "karta/pack-provenance/integration",
+  "run_at": "2026-07-23T02:56:54.835271+00:00",
+  "config_snapshot": {
+    "enabled": true,
+    "tool": "roundtable-critique",
+    "providers": [],
+    "min_providers": 2,
+    "focus": "",
+    "points": {
+      "plan_commit": true,
+      "deliver_merge": true
+    }
+  },
+  "panel": [
+    {
+      "provider": "fireworks-glm5p2",
+      "verdict": "conditional",
+      "summary": "F1(critical) stale-cache auto-reseed data-loss if classifier trusts stamp not content-hash [REFUTED-by-code]; F2 required id_prefix breaks existing extends packs [false-alarm: extends is new]; F3 match_pins **/# heuristic shipped unfixed [deferred: fixed oracle]; F4 relocation reading-order; F5 baseline masking; F6 'byte' vs canonicalized wording; F7 ledger CI gate."
+    },
+    {
+      "provider": "fireworks-kimi",
+      "verdict": "conditional",
+      "summary": "id_prefix/stale-exclude may break existing project packs [false-alarm: extends is new]; stale-cache forged-stamp bypass unless content hashes to ledgered base [REFUTED: decision uses local_hash-in-ledger, self-tested]; ledger+classifier must share canonicalization (they do); guard fail-open is deterrent-only [by design]. Version bump + ledger duty block 2.25.0 release, not the merge."
+    },
+    {
+      "provider": "fireworks-minimax",
+      "verdict": "conditional",
+      "summary": "id_prefix requirement leaks a breaking change [false-alarm: extends new]; harden match_pins now [deferred: fixed oracle]; inspect gringotts delta before folding [done: benign additive]; guard fail-open interactive-only [by design]. Credits the delivery's forthrightness; no outright correctness/safety blocker."
+    },
+    {
+      "provider": "fireworks-qwen",
+      "verdict": "conditional",
+      "summary": "fail-open guard vs deny objective [by design deterrent]; LLM primacy \u2014 doctrine below rule [known tradeoff, warn-only]; deferred fragile oracle guarantees future halts [deferred: fixed oracle]; baseline churn masks over-sensitivity [delta inspected benign]; prefix-scan coupling without manifest [intended single-source design]."
+    }
+  ]
+}
