@@ -10,10 +10,13 @@ input; packs enumerate overlay-over-builtin by basename; `disabled: true`
 suppresses; `always: true` pins; `match` tokens pin on whole-token
 case-insensitive equality against dependencies/languages; platform-native.md is
 skipped — and embeds the sha256 of the SKILL.md matching-rule section text (the
-hashed span runs from that section's heading line to the next same-level
-heading, LF-normalized, trailing blank/`---` lines stripped). On a hash
-mismatch it exits 2: the rule prose changed, so this implementation must be
-re-verified against it before the hash constant is updated.
+hashed span is the text between the explicit `<!-- karta:matching-rule:start -->`
+and `<!-- karta:matching-rule:end -->` markers, LF-normalized, leading/trailing
+blank/`---` lines stripped). On a hash mismatch it exits 2: the rule prose
+changed, so this implementation must be re-verified against it before the hash
+constant is updated. The explicit markers replaced the earlier 'heading to next
+`**`/`#` line' heuristic, which silently truncated the span whenever a `**`-lead
+paragraph landed inside the matching block (the 2.25.0 pack-provenance halt).
 
 Usage:
   python3 match_pins.py --self-test
@@ -27,6 +30,8 @@ import argparse, hashlib, json, subprocess, sys, tempfile
 from pathlib import Path
 
 RULE_HEADING = "**stack pack matching"
+RULE_START_MARK = "<!-- karta:matching-rule:start"
+RULE_END_MARK = "<!-- karta:matching-rule:end"
 RULE_SHA256 = "e1fe27ace05267de0ded3d2b25d377ca932b8691ce0f19631ea0a22d1096fcfb"
 RULE_MISMATCH_MSG = "matching rule changed — re-verify implementation, update hash"
 SKILL_MD = Path("skills") / "karta-plan" / "SKILL.md"
@@ -44,18 +49,31 @@ COVERAGE_PRUNE = {"node_modules", "vendor", ".git", ".venv", "venv", "dist", "bu
 # --- matching-rule hash guard --------------------------------------------------
 
 def extract_rule_section(text: str) -> str | None:
-    """The hashed span: from the matching-rule heading line to the next
-    same-level heading (a `**…` lead paragraph or any `#` heading), LF-normalized,
-    trailing blank and `---` separator lines stripped. None when the heading is gone."""
+    """The hashed span: the text between the explicit matching-rule markers
+    (`RULE_START_MARK` … `RULE_END_MARK`), LF-normalized, with leading/trailing
+    blank and `---` separator lines stripped. None when either marker is gone.
+
+    Explicit markers replace the former 'heading line to the next same-level
+    heading (`**…`/`#`)' heuristic, which silently truncated the span the moment a
+    `**`-lead paragraph was added inside the matching block — the exact defect that
+    halted the 2.25.0 pack-provenance delivery and forced a fix-forward. With
+    markers, any edit inside them changes the hash transparently (a real rule
+    change, re-pin and move on), and no adjacent `**`-lead paragraph outside them
+    can shorten the span. The content between the markers is unchanged from the
+    heuristic era, so the pinned `RULE_SHA256` is identical."""
     lines = text.replace("\r\n", "\n").split("\n")
-    start = next((i for i, ln in enumerate(lines) if ln.startswith(RULE_HEADING)), None)
+    start = next((i for i, ln in enumerate(lines) if ln.lstrip().startswith(RULE_START_MARK)), None)
     if start is None:
         return None
     end = next((j for j in range(start + 1, len(lines))
-                if lines[j].startswith("**") or lines[j].startswith("#")), len(lines))
-    span = lines[start:end]
+                if lines[j].lstrip().startswith(RULE_END_MARK)), None)
+    if end is None:
+        return None
+    span = lines[start + 1:end]
     while span and span[-1].strip() in ("", "---"):
         span.pop()
+    while span and span[0].strip() in ("", "---"):
+        span.pop(0)
     return "\n".join(span) + "\n"
 
 
@@ -75,7 +93,8 @@ def check_rule(karta: Path) -> tuple[bool, str]:
     except OSError as e:
         return False, f"{path}: unreadable ({e})"
     if actual is None:
-        return False, f"{path}: matching-rule heading {RULE_HEADING!r} not found"
+        return False, (f"{path}: matching-rule markers ({RULE_START_MARK!r} … "
+                       f"{RULE_END_MARK!r}) not found")
     if actual != RULE_SHA256:
         return False, f"expected {RULE_SHA256}, actual {actual}"
     return True, "matching-rule section hash verified"
@@ -198,14 +217,14 @@ def coverage_detect(repo: Path, karta: Path) -> tuple[dict, list[str]]:
 # --- self-test -----------------------------------------------------------------
 
 _FIXTURE_SECTION = """\
+<!-- karta:matching-rule:start (pinned by benchmarks/sme-static/match_pins.py) -->
 **stack pack matching (after the survey)  `plan:sme`.** Fixture rule text.
 
 1. Run detect_stack; its JSON is the only matching input.
 2. Overlay over builtin by basename; disabled suppresses; platform-native skipped.
 3. always pins; match tokens equal deps/languages whole-token case-insensitively.
 4. Collect always + matched into sme.
-
----
+<!-- karta:matching-rule:end -->
 
 **next same-level heading.** Not part of the span.
 """
@@ -233,10 +252,11 @@ def _run_self_test() -> int:
 
     # rule-hash span extraction + doctored-text detection
     span = extract_rule_section(_FIXTURE_SECTION)
-    check("span runs from heading to next same-level heading, trailing --- stripped",
+    check("span runs between the explicit markers, heading first, trailing --- stripped",
           span is not None and span.startswith(RULE_HEADING)
           and span.endswith("4. Collect always + matched into sme.\n")
-          and "next same-level heading" not in span, repr(span))
+          and "next same-level heading" not in span
+          and RULE_START_MARK not in span and RULE_END_MARK not in span, repr(span))
     fixture_hash = hashlib.sha256(span.encode()).hexdigest() if span else ""
     doctored = _FIXTURE_SECTION.replace("whole-token", "substring")
     doctored_span = extract_rule_section(doctored)
@@ -245,8 +265,25 @@ def _run_self_test() -> int:
           and hashlib.sha256(doctored_span.encode()).hexdigest() != fixture_hash)
     check("CRLF input is LF-normalized before hashing",
           extract_rule_section(_FIXTURE_SECTION.replace("\n", "\r\n")) == span)
-    check("missing heading returns None (rule gone is a mismatch, not a pass)",
+    check("missing start marker returns None (rule anchors gone is a mismatch, not a pass)",
           extract_rule_section("# other doc\n") is None)
+    check("missing end marker returns None (an unterminated span is a mismatch, not a pass)",
+          extract_rule_section(RULE_START_MARK + " -->\n**stack pack matching** x\n") is None)
+    # hardening regressions — the exact fragility the markers eliminate:
+    inside = _FIXTURE_SECTION.replace(
+        "4. Collect always + matched into sme.\n",
+        "4. Collect always + matched into sme.\n\n**Inside note.** A bold-lead paragraph inside the markers.\n")
+    inside_span = extract_rule_section(inside)
+    check("a **-lead paragraph INSIDE the markers is hashed, not silently truncated",
+          inside_span is not None
+          and "**Inside note.**" in inside_span
+          and hashlib.sha256(inside_span.encode()).hexdigest() != fixture_hash)
+    after = _FIXTURE_SECTION.replace(
+        "**next same-level heading.** Not part of the span.\n",
+        "**Adjacent doctrine.** Outside the markers, below the rule.\n\n"
+        "**next same-level heading.** Not part of the span.\n")
+    check("a **-lead paragraph AFTER the end marker never changes the span",
+          extract_rule_section(after) == span)
 
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)

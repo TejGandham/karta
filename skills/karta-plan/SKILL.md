@@ -101,6 +101,7 @@ When the token system is W3C DTCG (JSON leaves carrying `$value`/`$type`), also 
 
 Non-UI stacks skip this annex entirely — the base survey above is all they need.
 
+<!-- karta:matching-rule:start — benchmarks/sme-static/match_pins.py pins the sha256 of the text between these markers so its replay implementation is re-verified whenever the rule changes. You may edit the rule, but keep both markers; adding a **-lead paragraph inside them changes the hash (re-run the gate to re-pin), while paragraphs outside them do not. -->
 **stack pack matching (after the survey)  `plan:sme`.** karta ships curated stack packs — advisory do's/don'ts per stack, each with an enforceable Review checklist — and a project may add its own. Once the survey completes, select the packs that apply:
 
 1. Detect dependencies deterministically: run `python3 skills/karta-plan/scripts/detect_stack.py <repo-root>` (stdlib-only) during the survey. It scans the repo's manifests (package.json, pyproject.toml, requirements*.txt, go.mod, Cargo.toml, Gemfile, composer.json) and prints `{"dependencies": [...], "languages": [...]}`. That JSON is the **only** matching input. The survey's one-phrase stack summary stays — for human reporting — but it is not a matching input.
@@ -113,6 +114,7 @@ Non-UI stacks skip this annex entirely — the base survey above is all they nee
 Because `sme` is matched from one repo survey, it is identical across every binder in a planning run unless a binder's scope genuinely excludes a stack.
 
 Load the applied packs now — their guidance feeds synthesis (Phase 2) and their ids are pinned into the binder (Phase 5). These packs are **advisory for decomposition**: they shape how items are split, what each `contract` says, and which `oracle` assertions you choose; they never add a gate at plan time.
+<!-- karta:matching-rule:end -->
 
 **Provenance classification (read-only reporting).** As you enumerate the overlay packs (step 2), classify where each local copy came from, so the plan reports its origin next to the match result. Run `python3 skills/karta-plan/scripts/check_pack_provenance.py <repo-root>` and report each pack's state. A pack lands in exactly one of six states: `seeded cache` (a clean copy of the current built-in), `stale cache` (a clean copy of an older built-in), `suppression` (a `disabled: true` override), `project pack` (the project's own pack, with no built-in of that name), `illegal shadow` (a copy that carries a genuine local edit over the shipped built-in), or `orphaned cache` (its `seeded_from` names a built-in that no longer exists). The comparison is byte-level on canonicalized content; the provenance stamp is diagnostic only, never the cleanliness signal.
 
